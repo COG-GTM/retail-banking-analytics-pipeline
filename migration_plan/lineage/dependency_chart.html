@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retail Banking Analytics Pipeline - Data Dependency Chart</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Inter, Roboto, 'Segoe UI', system-ui, sans-serif;
+      background: #0F172A;
+      color: #E2E8F0;
+      overflow: hidden;
+    }
+    #header {
+      background: #1E293B;
+      padding: 16px 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-radius: 0 0 12px 12px;
+    }
+    #header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #FFFFFF;
+    }
+    #header .subtitle {
+      font-size: 13px;
+      color: #94A3B8;
+      margin-top: 3px;
+    }
+    .legend {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: #CBD5E1;
+    }
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+    #chart {
+      width: 100vw;
+      height: calc(100vh - 64px);
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <div>
+      <h1>Retail Banking Analytics Pipeline &mdash; Data Lineage</h1>
+      <div class="subtitle">Interactive dependency chart &middot; Zoom &amp; pan to explore &middot; Hover nodes for details</div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#22D3EE;"></div>Source Tables</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#4ADE80;"></div>Staging Layer (BTEQ)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#F0A050;"></div>Analytics Layer (SAS)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#A78BFA;"></div>Golden Record</div>
+    </div>
+  </div>
+  <div id="chart"></div>
+
+  <script>
+    var chart = echarts.init(document.getElementById('chart'), null, { renderer: 'canvas' });
+
+    // --- Enterprise color palette ---
+    var COLORS = {
+      source:    { bg: '#22D3EE', border: '#0EA5C9', text: '#0F172A' },
+      staging:   { bg: '#4ADE80', border: '#22C55E', text: '#0F172A' },
+      analytics: { bg: '#F0A050', border: '#D08030', text: '#0F172A' },
+      golden:    { bg: '#A78BFA', border: '#8B5CF6', text: '#FFFFFF' }
+    };
+
+    // --- Node definitions ---
+    var nodes = [
+      // Source tables (layer 0) - arranged vertically on the left
+      { name: 'customers',              x: 80,  y: 80,  layer: 'source',    rows: 500,    file: 'customers.csv',              desc: 'Core customer demographics and identifiers' },
+      { name: 'accounts',               x: 80,  y: 180, layer: 'source',    rows: 1251,   file: 'accounts.csv',               desc: 'Bank account details, balances, and types' },
+      { name: 'transactions',           x: 80,  y: 280, layer: 'source',    rows: 80528,  file: 'transactions.csv',           desc: 'Individual banking transactions' },
+      { name: 'addresses',              x: 80,  y: 380, layer: 'source',    rows: 1000,   file: 'addresses.csv',              desc: 'Customer address history (SCD Type 2)' },
+      { name: 'customer_bureau_scores', x: 80,  y: 480, layer: 'source',    rows: 500,    file: 'customer_bureau_scores.csv', desc: 'Credit bureau scores and risk indicators' },
+      { name: 'transaction_types',      x: 80,  y: 580, layer: 'source',    rows: 8,      file: 'transaction_types.csv',      desc: 'Transaction type reference data' },
+
+      // Staging layer (layer 1)
+      { name: 'stg_customer_360',  x: 380, y: 150, layer: 'staging',   rows: 478,  file: 'stg_customer_360.csv',  desc: 'Unified customer view: demographics + accounts + addresses + bureau scores' },
+      { name: 'stg_txn_summary',   x: 380, y: 330, layer: 'staging',   rows: 1251, file: 'stg_txn_summary.csv',   desc: 'Account-level transaction aggregations and velocity metrics' },
+      { name: 'stg_risk_factors',  x: 380, y: 510, layer: 'staging',   rows: 478,  file: 'stg_risk_factors.csv',  desc: 'Risk feature engineering: NSF tracking, balance differentials, bureau data' },
+
+      // Analytics layer (layer 2)
+      { name: 'customer_segments',      x: 680, y: 100, layer: 'analytics', rows: 407, file: 'customer_segments.csv',      desc: 'K-means customer segmentation (PREMIER, DIGITAL, etc.)' },
+      { name: 'transaction_analytics',  x: 680, y: 300, layer: 'analytics', rows: 500, file: 'transaction_analytics.csv',  desc: 'Transaction trend analysis and anomaly detection' },
+      { name: 'customer_risk_scores',   x: 680, y: 500, layer: 'analytics', rows: 407, file: 'customer_risk_scores.csv',   desc: 'Logistic regression risk scoring and tiering (LOW to ELEVATED)' },
+
+      // Golden record (layer 3)
+      { name: 'customer_master_profile', x: 960, y: 300, layer: 'golden', rows: 407, file: 'customer_master_profile.csv', desc: 'Enterprise golden record: segments + analytics + risk in one master profile' }
+    ];
+
+    // --- Edge definitions with labels ---
+    var edges = [
+      // Source -> Staging: stg_customer_360
+      { source: 'customers',              target: 'stg_customer_360', label: 'demographics' },
+      { source: 'accounts',               target: 'stg_customer_360', label: 'account holdings' },
+      { source: 'addresses',              target: 'stg_customer_360', label: 'address history' },
+      { source: 'customer_bureau_scores', target: 'stg_customer_360', label: 'bureau scores' },
+
+      // Source -> Staging: stg_txn_summary
+      { source: 'transactions',      target: 'stg_txn_summary', label: 'raw transactions' },
+      { source: 'accounts',          target: 'stg_txn_summary', label: 'account context' },
+      { source: 'transaction_types', target: 'stg_txn_summary', label: 'type lookup' },
+
+      // Source -> Staging: stg_risk_factors
+      { source: 'customers',              target: 'stg_risk_factors', label: 'customer info' },
+      { source: 'accounts',               target: 'stg_risk_factors', label: 'balance data' },
+      { source: 'transactions',           target: 'stg_risk_factors', label: 'txn patterns' },
+      { source: 'customer_bureau_scores', target: 'stg_risk_factors', label: 'credit data' },
+
+      // Staging -> Analytics
+      { source: 'stg_customer_360', target: 'customer_segments',     label: 'customer features' },
+      { source: 'stg_txn_summary',  target: 'transaction_analytics', label: 'txn aggregates' },
+      { source: 'stg_customer_360', target: 'transaction_analytics', label: 'customer context' },
+      { source: 'stg_risk_factors', target: 'customer_risk_scores',  label: 'risk features' },
+      { source: 'stg_customer_360', target: 'customer_risk_scores',  label: 'customer baseline' },
+
+      // Analytics + Staging -> Golden Record
+      { source: 'stg_customer_360',     target: 'customer_master_profile', label: 'base profile' },
+      { source: 'customer_segments',     target: 'customer_master_profile', label: 'segment codes' },
+      { source: 'transaction_analytics', target: 'customer_master_profile', label: 'txn metrics' },
+      { source: 'customer_risk_scores',  target: 'customer_master_profile', label: 'risk tiers' }
+    ];
+
+    // --- Build ECharts data ---
+    var layerLabels = {
+      source: 'Source',
+      staging: 'Staging (BTEQ)',
+      analytics: 'Analytics (SAS)',
+      golden: 'Golden Record'
+    };
+
+    var layerPaths = {
+      source: 'data/01_source_tables/',
+      staging: 'data/02_bteq_staging/',
+      analytics: 'data/03_sas_data_products/',
+      golden: 'data/03_sas_data_products/'
+    };
+
+    var echartsNodes = nodes.map(function(n) {
+      var c = COLORS[n.layer];
+      return {
+        name: n.name,
+        x: n.x,
+        y: n.y,
+        fixed: true,
+        symbolSize: [160, 60],
+        symbol: 'roundRect',
+        label: {
+          show: true,
+          formatter: function(params) {
+            var nd = nodes.find(function(nn) { return nn.name === params.name; });
+            var shortName = nd.name.length > 18 ? nd.name.substring(0, 16) + '..' : nd.name;
+            return '{title|' + shortName + '}\n{count|' + nd.rows.toLocaleString() + ' rows}';
+          },
+          rich: {
+            title: {
+              fontSize: 12,
+              fontWeight: 'bold',
+              color: c.text,
+              lineHeight: 18
+            },
+            count: {
+              fontSize: 10,
+              color: n.layer === 'golden' ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.7)',
+              lineHeight: 16
+            }
+          }
+        },
+        itemStyle: {
+          color: c.bg,
+          borderColor: c.border,
+          borderWidth: 2,
+          borderRadius: 8,
+          shadowColor: c.bg + '44',
+          shadowBlur: 12
+        },
+        tooltip: {
+          formatter: function(params) {
+            var nd = nodes.find(function(nn) { return nn.name === params.name; });
+            return '<div style="font-size:14px;font-weight:bold;margin-bottom:6px;color:#FFFFFF;">' + nd.name + '</div>' +
+                   '<div style="margin-bottom:4px;color:#CBD5E1;"><b style="color:#E2E8F0;">Layer:</b> ' + layerLabels[nd.layer] + '</div>' +
+                   '<div style="margin-bottom:4px;color:#CBD5E1;"><b style="color:#E2E8F0;">File:</b> ' + nd.file + '</div>' +
+                   '<div style="margin-bottom:4px;color:#CBD5E1;"><b style="color:#E2E8F0;">Path:</b> ' + layerPaths[nd.layer] + '</div>' +
+                   '<div style="margin-bottom:4px;color:#CBD5E1;"><b style="color:#E2E8F0;">Rows:</b> ' + nd.rows.toLocaleString() + '</div>' +
+                   '<div style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;color:#94A3B8;">' + nd.desc + '</div>';
+          }
+        }
+      };
+    });
+
+    var echartsEdges = edges.map(function(e) {
+      var sourceNode = nodes.find(function(n) { return n.name === e.source; });
+      var targetNode = nodes.find(function(n) { return n.name === e.target; });
+      var sourceColor = COLORS[sourceNode.layer].bg;
+      var targetColor = COLORS[targetNode.layer].bg;
+      return {
+        source: e.source,
+        target: e.target,
+        label: {
+          show: true,
+          formatter: e.label,
+          fontSize: 9,
+          color: '#94A3B8',
+          padding: [2, 5],
+          backgroundColor: 'rgba(15,23,42,0.9)',
+          borderRadius: 3
+        },
+        lineStyle: {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 1, y2: 0,
+            colorStops: [
+              { offset: 0, color: sourceColor + 'aa' },
+              { offset: 1, color: targetColor + 'aa' }
+            ]
+          },
+          width: 2,
+          curveness: 0.15,
+          opacity: 0.7
+        },
+        emphasis: {
+          lineStyle: { width: 4, opacity: 1 }
+        },
+        tooltip: {
+          formatter: function() {
+            return '<b style="color:#FFFFFF;">' + e.source + '</b> <span style="color:#94A3B8;">&rarr;</span> <b style="color:#FFFFFF;">' + e.target + '</b><br/>' +
+                   '<i style="color:#CBD5E1;">' + e.label + '</i>';
+          }
+        }
+      };
+    });
+
+    var option = {
+      backgroundColor: '#0F172A',
+      tooltip: {
+        trigger: 'item',
+        backgroundColor: 'rgba(30,41,59,0.97)',
+        borderColor: 'rgba(255,255,255,0.08)',
+        textStyle: { color: '#CBD5E1', fontSize: 12 },
+        extraCssText: 'max-width:340px;white-space:normal;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.4);'
+      },
+      animationDuration: 1500,
+      animationEasingUpdate: 'quinticInOut',
+      series: [{
+        type: 'graph',
+        layout: 'none',
+        roam: true,
+        zoom: 1.0,
+        scaleLimit: { min: 0.3, max: 3 },
+        data: echartsNodes,
+        links: echartsEdges,
+        edgeSymbol: ['none', 'arrow'],
+        edgeSymbolSize: [0, 10],
+        emphasis: {
+          focus: 'adjacency',
+          lineStyle: { width: 4 }
+        },
+        lineStyle: {
+          curveness: 0.15
+        }
+      }],
+      graphic: [
+        // Layer column labels
+        {
+          type: 'text',
+          left: 35,
+          top: 80,
+          style: {
+            text: 'SOURCE TABLES',
+            fill: '#22D3EE',
+            fontSize: 11,
+            fontWeight: 'bold',
+            fontFamily: 'monospace'
+          }
+        },
+        {
+          type: 'text',
+          left: 320,
+          top: 80,
+          style: {
+            text: 'STAGING (BTEQ)',
+            fill: '#4ADE80',
+            fontSize: 11,
+            fontWeight: 'bold',
+            fontFamily: 'monospace'
+          }
+        },
+        {
+          type: 'text',
+          left: 610,
+          top: 80,
+          style: {
+            text: 'ANALYTICS (SAS)',
+            fill: '#F0A050',
+            fontSize: 11,
+            fontWeight: 'bold',
+            fontFamily: 'monospace'
+          }
+        },
+        {
+          type: 'text',
+          left: 895,
+          top: 80,
+          style: {
+            text: 'GOLDEN RECORD',
+            fill: '#A78BFA',
+            fontSize: 11,
+            fontWeight: 'bold',
+            fontFamily: 'monospace'
+          }
+        }
+      ]
+    };
+
+    chart.setOption(option);
+
+    window.addEventListener('resize', function() {
+      chart.resize();
+    });
+  </script>
+</body>
+</html>
