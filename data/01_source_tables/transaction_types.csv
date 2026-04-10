@@ -1,0 +1,9 @@
+transaction_type_cd,description,category,is_revenue,effective_date,expiration_date
+PUR,Purchase,DEBIT,N,2020-01-01,
+WDR,Withdrawal,DEBIT,N,2020-01-01,
+DEP,Deposit,CREDIT,N,2020-01-01,
+PMT,Payment,CREDIT,N,2020-01-01,
+FEE,Account Fee,FEE,Y,2020-01-01,
+NSF,NSF Fee,FEE,Y,2020-01-01,
+INT,Interest,CREDIT,Y,2020-01-01,
+TRF,Transfer,DEBIT,N,2020-01-01,
