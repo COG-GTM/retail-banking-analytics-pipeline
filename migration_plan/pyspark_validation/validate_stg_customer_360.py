@@ -11,6 +11,7 @@ from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import (
     coalesce,
     col,
+    concat,
     count,
     current_date,
     current_timestamp,
@@ -22,6 +23,7 @@ from pyspark.sql.functions import (
     months_between,
     row_number,
     sum as spark_sum,
+    trim,
     when,
 )
 from pyspark.sql.types import IntegerType
@@ -62,7 +64,10 @@ def build_stg_customer_360(spark: SparkSession):
         .filter(col("rn") == 1)
         .select(
             col("customer_id").alias("addr_cust_id"),
-            col("address_line_1").alias("primary_address"),
+            concat(
+                trim(col("address_line_1")),
+                coalesce(concat(lit(", "), trim(col("address_line_2"))), lit(""))
+            ).alias("primary_address"),
             "city",
             "state_code",
             "zip_code",

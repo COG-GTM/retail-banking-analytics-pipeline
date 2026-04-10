@@ -90,7 +90,7 @@ def build_stg_txn_summary(spark: SparkSession):
         # Channel mix
         count(when(col("channel_code") == "ATM", True)).alias("atm_count"),
         count(when(col("channel_code") == "POS", True)).alias("pos_count"),
-        count(when(col("channel_code").isin("ONL", "WEB"), True)).alias("web_count"),
+        count(when(col("channel_code") == "WEB", True)).alias("web_count"),
         count(when(col("channel_code") == "MOB", True)).alias("mob_count"),
     )
 
@@ -115,9 +115,9 @@ def build_stg_txn_summary(spark: SparkSession):
     merch_counts = (
         txn_enriched.filter(col("merchant_category").isNotNull())
         .groupBy("account_id", "merchant_category")
-        .agg(count("*").alias("merch_cnt"))
+        .agg(spark_sum(spark_abs(col("amount"))).alias("merch_spend"))
     )
-    merch_window = Window.partitionBy("account_id").orderBy(desc("merch_cnt"))
+    merch_window = Window.partitionBy("account_id").orderBy(desc("merch_spend"))
     top_merchant = (
         merch_counts.withColumn("rn", row_number().over(merch_window))
         .filter(col("rn") == 1)
