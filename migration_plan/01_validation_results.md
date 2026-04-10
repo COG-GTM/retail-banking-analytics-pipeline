@@ -10,11 +10,11 @@
 
 | # | Script | Source | Status | Row Match | Notes |
 |---|--------|--------|--------|-----------|-------|
-| 1 | STG_CUSTOMER_360 | BTEQ 01 | **PASS** | 478 / 478 | Exact match, balance diff < 1e-9 |
+| 1 | STG_CUSTOMER_360 | BTEQ 01 | **PASS** | 478 / 478 | Exact match; credit util formula corrected to match BTEQ |
 | 2 | STG_TXN_SUMMARY | BTEQ 02 | **PARTIAL** | 1,251 / 1,251 | Row match; txn count logic diverges (see below) |
 | 3 | STG_RISK_FACTORS | BTEQ 03 | **PASS** | 478 / 478 | Exact match on all 19 columns |
 | 4 | CUSTOMER_SEGMENTS | SAS 01 | **EXPECTED** | 478 / 407 | K-means non-determinism + active-customer filter |
-| 5 | TXN_ANALYTICS | SAS 02 | **PASS** | 500 / 500 | Row match, 100% customer overlap |
+| 5 | TXN_ANALYTICS | SAS 02 | **PASS** | 500 / 500 | Row match; net_cash_flow sign corrected (credits − debits) |
 | 6 | RISK_SCORING | SAS 03 | **EXPECTED** | 478 / 407 | Active-customer filter causes row diff |
 | 7 | DATA_PRODUCTS | SAS 04 | **EXPECTED** | 478 / 407 | Cascades from upstream row-count diffs |
 
@@ -31,6 +31,10 @@ All 7 scripts executed without errors. All customer_id overlap = 100%.
 - **Column count**: 24 vs 24 (exact match)
 - **Join overlap**: 478 / 478 (100%)
 - **Max total_balance diff**: 2.33e-10 (floating-point rounding only)
+- **Bug fix applied**: Credit utilization formula was inverted (`(limit - balance) / limit`
+  instead of `balance / limit`) and was using all account balances instead of only CREDIT
+  account balances. Corrected to match BTEQ: `CREDIT_BALANCE / TOTAL_CREDIT_LIMIT * 100`
+  where both values are restricted to `account_type = 'CREDIT'`.
 - **Conclusion**: PySpark translation is a faithful reproduction of the BTEQ logic.
 
 ### 2. STG_TXN_SUMMARY (BTEQ Script 02) -- PARTIAL PASS
@@ -42,6 +46,12 @@ All 7 scripts executed without errors. All customer_id overlap = 100%.
   - **Root cause**: The BTEQ script counts transactions using a different join path
     (outer join with status filtering) vs. our inner join approach. The reference data
     includes cancelled/reversed transactions in counts while PySpark filters them.
+- **Bug fixes applied**:
+  - Added `ABS()` to debit and fee amounts (`amt_total_debit`, `amt_total_fees`,
+    `amt_avg_debit`, `amt_max_single_debit`) to match BTEQ's `ABS(t.AMOUNT)` usage.
+    Source transactions store debits as negative values.
+  - Changed `countDistinct("merchant_category")` to `countDistinct("merchant_name")`
+    to match BTEQ's `COUNT(DISTINCT t.MERCHANT_NAME)` for `distinct_merchants`.
 - **Migration action item**: During implementation, replicate the exact join conditions
   from BTEQ (LEFT OUTER JOIN with status_code filtering) and add the date-range columns.
 
@@ -73,6 +83,10 @@ All 7 scripts executed without errors. All customer_id overlap = 100%.
 - **Column count**: 15 PySpark vs 21 reference (PySpark produces fewer derived columns;
   remaining columns like `fee_income`, `interest_income`, `revenue_contribution` require
   additional business logic from downstream systems)
+- **Bug fix applied**: Net cash flow formula was adding debit amounts instead of subtracting
+  (`credits + debits` → `credits - debits`). Since staging stores debits as positive values
+  (after ABS in BTEQ), net_cash_flow = credits − debits. This also corrects the downstream
+  `spend_trend` classification (GROWING/STABLE/DECLINING/AT_RISK).
 - **Conclusion**: Core analytics logic validated. Missing columns are additive features
   to implement during full migration.
 

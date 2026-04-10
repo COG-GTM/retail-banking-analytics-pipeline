@@ -72,20 +72,20 @@ def build_stg_txn_summary(spark: SparkSession):
         count(when(col("category") == "DEBIT", True)).alias("txn_count_debit"),
         count(when(col("category") == "CREDIT", True)).alias("txn_count_credit"),
         count(when(col("category") == "FEE", True)).alias("txn_count_fee"),
-        spark_sum(when(col("category") == "DEBIT", col("amount")).otherwise(0)).alias(
+        spark_sum(when(col("category") == "DEBIT", spark_abs(col("amount"))).otherwise(0)).alias(
             "amt_total_debit"
         ),
         spark_sum(when(col("category") == "CREDIT", col("amount")).otherwise(0)).alias(
             "amt_total_credit"
         ),
-        spark_sum(when(col("category") == "FEE", col("amount")).otherwise(0)).alias(
+        spark_sum(when(col("category") == "FEE", spark_abs(col("amount"))).otherwise(0)).alias(
             "amt_total_fees"
         ),
-        avg(when(col("category") == "DEBIT", col("amount"))).alias("amt_avg_debit"),
+        avg(when(col("category") == "DEBIT", spark_abs(col("amount")))).alias("amt_avg_debit"),
         avg(when(col("category") == "CREDIT", col("amount"))).alias("amt_avg_credit"),
-        spark_max(when(col("category") == "DEBIT", col("amount"))).alias("amt_max_single_debit"),
+        spark_max(when(col("category") == "DEBIT", spark_abs(col("amount")))).alias("amt_max_single_debit"),
         spark_max(when(col("category") == "CREDIT", col("amount"))).alias("amt_max_single_credit"),
-        countDistinct("merchant_category").alias("distinct_merchants"),
+        countDistinct("merchant_name").alias("distinct_merchants"),
         # Channel mix
         count(when(col("channel_code") == "ATM", True)).alias("atm_count"),
         count(when(col("channel_code") == "POS", True)).alias("pos_count"),

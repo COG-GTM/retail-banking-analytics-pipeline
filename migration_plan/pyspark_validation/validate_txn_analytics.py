@@ -56,7 +56,7 @@ def build_txn_analytics(spark: SparkSession):
     cust_agg = cust_agg.withColumn(
         "net_cash_flow",
         coalesce(col("total_credit_amt"), lit(0))
-        + coalesce(col("total_debit_amt"), lit(0)),
+        - coalesce(col("total_debit_amt"), lit(0)),
     ).withColumn(
         "avg_transaction_size",
         when(

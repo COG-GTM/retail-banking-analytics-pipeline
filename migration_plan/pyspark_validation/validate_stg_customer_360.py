@@ -90,19 +90,21 @@ def build_stg_customer_360(spark: SparkSession):
             when(col("account_type") == "LOAN", lit("Y")).otherwise(lit("N"))
         ).alias("has_loan"),
         spark_sum(coalesce(col("current_balance"), lit(0))).alias("total_balance"),
-        spark_sum(coalesce(col("credit_limit"), lit(0))).alias("total_credit_limit"),
+        spark_sum(
+            when(col("account_type") == "CREDIT", coalesce(col("credit_limit"), lit(0))).otherwise(0)
+        ).alias("total_credit_limit"),
+        spark_sum(
+            when(col("account_type") == "CREDIT", coalesce(col("current_balance"), lit(0))).otherwise(0)
+        ).alias("credit_balance"),
     )
 
-    # Credit utilization
+    # Credit utilization = credit_balance / total_credit_limit * 100
+    # Matches BTEQ: CREDIT_BALANCE / TOTAL_CREDIT_LIMIT * 100
     acct_agg = acct_agg.withColumn(
         "credit_utilization_pct",
         when(
             col("total_credit_limit") > 0,
-            (
-                (col("total_credit_limit") - col("total_balance"))
-                / col("total_credit_limit")
-                * 100
-            ),
+            col("credit_balance") / col("total_credit_limit") * 100,
         ).otherwise(0.0),
     )
 
