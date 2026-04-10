@@ -90,7 +90,7 @@ def build_txn_analytics(spark: SparkSession):
     if len(quantiles) == 3:
         q1, median, q3 = quantiles
         iqr = q3 - q1
-        upper_fence = median + 3 * iqr
+        upper_fence = median + 3 * iqr if iqr > 0 else float("inf")
     else:
         upper_fence = float("inf")
 

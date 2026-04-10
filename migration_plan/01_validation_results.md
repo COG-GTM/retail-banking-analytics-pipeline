@@ -12,13 +12,13 @@
 |---|--------|--------|--------|-----------|-------|
 | 1 | STG_CUSTOMER_360 | BTEQ 01 | **PASS** | 478 / 478 | Exact match; credit util formula corrected to match BTEQ |
 | 2 | STG_TXN_SUMMARY | BTEQ 02 | **PASS** | 1,251 / 1,251 | Exact match after STATUS_CODE='P' filter added |
-| 3 | STG_RISK_FACTORS | BTEQ 03 | **PASS** | 478 / 478 | Exact match on all 19 columns |
+| 3 | STG_RISK_FACTORS | BTEQ 03 | **PARTIAL** | 478 / 478 | Row match; column schema diverges (simplified PySpark vs full BTEQ) |
 | 4 | CUSTOMER_SEGMENTS | SAS 01 | **EXPECTED** | 478 / 407 | K-means non-determinism + active-customer filter |
 | 5 | TXN_ANALYTICS | SAS 02 | **PASS** | 500 / 500 | Row match; net_cash_flow sign corrected (credits − debits) |
 | 6 | RISK_SCORING | SAS 03 | **EXPECTED** | 478 / 407 | Active-customer filter causes row diff |
 | 7 | DATA_PRODUCTS | SAS 04 | **EXPECTED** | 478 / 407 | Cascades from upstream row-count diffs |
 
-**Overall**: 4 fully passed, 3 expected discrepancies (documented below).
+**Overall**: 3 fully passed, 1 partial (schema gap), 3 expected discrepancies (documented below).
 All 7 scripts executed without errors. All customer_id overlap = 100%.
 
 ---
@@ -59,12 +59,20 @@ All 7 scripts executed without errors. All customer_id overlap = 100%.
 - **Migration action item**: Add the date-range columns (`summary_period_start`,
   `summary_period_end`, `days_since_last_txn`) during full implementation.
 
-### 3. STG_RISK_FACTORS (BTEQ Script 03) -- PASS
+### 3. STG_RISK_FACTORS (BTEQ Script 03) -- PARTIAL
 
 - **Row count**: 478 vs 478 (match)
-- **Column count**: 19 vs 19 (match)
+- **Column count**: 19 vs 19 (same count, but names differ)
+- **Column name overlap**: Only 3 of 19 match (`customer_id`, `external_credit_score`, `load_ts`)
 - **Join overlap**: 478 / 478 (100%)
-- **Conclusion**: Full parity achieved.
+- **Schema gap**: The PySpark builds a simplified risk-factor set (e.g., `debit_credit_ratio`,
+  `reversal_rate`, `credit_utilization`) whereas the BTEQ computes a richer feature vector
+  (e.g., `account_overdraft_cnt`, `nsf_fee_total`, `avg_daily_balance_30d`,
+  `debit_velocity_7d`, `high_risk_merchant_cnt`). The row-level join on `customer_id`
+  confirms the correct population is selected.
+- **Migration action item**: During full implementation, replicate the BTEQ column schema
+  exactly — including overdraft counts, NSF fees, 30/90-day balance windows, payment
+  history, debit velocity, and merchant risk indicators.
 
 ### 4. CUSTOMER_SEGMENTS (SAS Program 01) -- EXPECTED DISCREPANCY
 
