@@ -50,7 +50,8 @@ def build_stg_txn_summary(spark: SparkSession):
     # 2. Join transactions with types and accounts
     # ------------------------------------------------------------------
     txn_enriched = (
-        transactions.join(txn_types, "transaction_type_cd", "left")
+        transactions.filter(col("status_code") == "P")
+        .join(txn_types, "transaction_type_cd", "left")
         .join(
             accounts.select("account_id", "customer_id", "account_type"),
             "account_id",

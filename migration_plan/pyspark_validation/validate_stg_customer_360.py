@@ -56,7 +56,7 @@ def build_stg_customer_360(spark: SparkSession):
     primary_addr = (
         addresses.filter(
             (col("address_type") == "HOME")
-            & (col("is_primary") == "Y")
+            & (col("expiration_date").isNull() | (col("expiration_date") > current_date()))
         )
         .withColumn("rn", row_number().over(addr_window))
         .filter(col("rn") == 1)

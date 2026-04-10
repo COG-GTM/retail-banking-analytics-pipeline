@@ -62,12 +62,13 @@ def build_customer_segments(spark: SparkSession):
         when(col("age") < 25, "GEN_Z")
         .when(col("age") < 41, "MILLENNIAL")
         .when(col("age") < 57, "GEN_X")
-        .otherwise("BOOMER"),
+        .when(col("age") < 76, "BOOMER")
+        .otherwise("SILENT"),
     ).withColumn(
         "balance_tier",
         when(col("total_balance") < 1000, "LOW")
         .when(col("total_balance") < 10000, "MODERATE")
-        .when(col("total_balance") < 50000, "AFFLUENT")
+        .when(col("total_balance") < 100000, "AFFLUENT")
         .otherwise("HIGH_NET_WORTH"),
     )
 

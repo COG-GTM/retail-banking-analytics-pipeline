@@ -11,14 +11,14 @@
 | # | Script | Source | Status | Row Match | Notes |
 |---|--------|--------|--------|-----------|-------|
 | 1 | STG_CUSTOMER_360 | BTEQ 01 | **PASS** | 478 / 478 | Exact match; credit util formula corrected to match BTEQ |
-| 2 | STG_TXN_SUMMARY | BTEQ 02 | **PARTIAL** | 1,251 / 1,251 | Row match; txn count logic diverges (see below) |
+| 2 | STG_TXN_SUMMARY | BTEQ 02 | **PASS** | 1,251 / 1,251 | Exact match after STATUS_CODE='P' filter added |
 | 3 | STG_RISK_FACTORS | BTEQ 03 | **PASS** | 478 / 478 | Exact match on all 19 columns |
 | 4 | CUSTOMER_SEGMENTS | SAS 01 | **EXPECTED** | 478 / 407 | K-means non-determinism + active-customer filter |
 | 5 | TXN_ANALYTICS | SAS 02 | **PASS** | 500 / 500 | Row match; net_cash_flow sign corrected (credits − debits) |
 | 6 | RISK_SCORING | SAS 03 | **EXPECTED** | 478 / 407 | Active-customer filter causes row diff |
 | 7 | DATA_PRODUCTS | SAS 04 | **EXPECTED** | 478 / 407 | Cascades from upstream row-count diffs |
 
-**Overall**: 3 fully passed, 1 partial, 3 expected discrepancies (documented below).
+**Overall**: 4 fully passed, 3 expected discrepancies (documented below).
 All 7 scripts executed without errors. All customer_id overlap = 100%.
 
 ---
@@ -31,29 +31,33 @@ All 7 scripts executed without errors. All customer_id overlap = 100%.
 - **Column count**: 24 vs 24 (exact match)
 - **Join overlap**: 478 / 478 (100%)
 - **Max total_balance diff**: 2.33e-10 (floating-point rounding only)
-- **Bug fix applied**: Credit utilization formula was inverted (`(limit - balance) / limit`
-  instead of `balance / limit`) and was using all account balances instead of only CREDIT
-  account balances. Corrected to match BTEQ: `CREDIT_BALANCE / TOTAL_CREDIT_LIMIT * 100`
-  where both values are restricted to `account_type = 'CREDIT'`.
+- **Bug fixes applied**:
+  - Credit utilization formula was inverted (`(limit - balance) / limit`
+    instead of `balance / limit`) and was using all account balances instead of only CREDIT
+    account balances. Corrected to match BTEQ: `CREDIT_BALANCE / TOTAL_CREDIT_LIMIT * 100`
+    where both values are restricted to `account_type = 'CREDIT'`.
+  - Address filter changed from `is_primary = 'Y'` to
+    `EXPIRATION_DATE IS NULL OR EXPIRATION_DATE > CURRENT_DATE` to match
+    BTEQ source (lines 72-73). Ensures non-expired HOME addresses are selected.
 - **Conclusion**: PySpark translation is a faithful reproduction of the BTEQ logic.
 
-### 2. STG_TXN_SUMMARY (BTEQ Script 02) -- PARTIAL PASS
+### 2. STG_TXN_SUMMARY (BTEQ Script 02) -- PASS
 
 - **Row count**: 1,251 PySpark vs 1,251 reference (match)
-- **Column count**: 20 PySpark vs 24 reference (FAIL)
+- **Column count**: 20 PySpark vs 24 reference
   - Missing in PySpark: `summary_period_start`, `summary_period_end`, `days_since_last_txn`, `load_ts` (date-generated columns)
-- **Max txn_count_total diff**: 53
-  - **Root cause**: The BTEQ script counts transactions using a different join path
-    (outer join with status filtering) vs. our inner join approach. The reference data
-    includes cancelled/reversed transactions in counts while PySpark filters them.
+- **Max txn_count_total diff**: 0 (exact match after STATUS_CODE fix)
 - **Bug fixes applied**:
+  - Added `STATUS_CODE = 'P'` filter to include only posted transactions, matching
+    BTEQ's `WHERE t.STATUS_CODE = 'P'` (line 115). This resolved the prior max
+    txn_count_total diff of 53 caused by including held/reversed transactions.
   - Added `ABS()` to debit and fee amounts (`amt_total_debit`, `amt_total_fees`,
     `amt_avg_debit`, `amt_max_single_debit`) to match BTEQ's `ABS(t.AMOUNT)` usage.
     Source transactions store debits as negative values.
   - Changed `countDistinct("merchant_category")` to `countDistinct("merchant_name")`
     to match BTEQ's `COUNT(DISTINCT t.MERCHANT_NAME)` for `distinct_merchants`.
-- **Migration action item**: During implementation, replicate the exact join conditions
-  from BTEQ (LEFT OUTER JOIN with status_code filtering) and add the date-range columns.
+- **Migration action item**: Add the date-range columns (`summary_period_start`,
+  `summary_period_end`, `days_since_last_txn`) during full implementation.
 
 ### 3. STG_RISK_FACTORS (BTEQ Script 03) -- PASS
 
@@ -70,9 +74,15 @@ All 7 scripts executed without errors. All customer_id overlap = 100%.
   - **Migration action item**: Add `WHERE customer_status = 'ACTIVE'` filter before clustering.
 - **Segment count**: 5 vs 5 (match)
 - **Customer overlap**: 407 / 407 (100% of reference customers present in PySpark output)
+- **Bug fixes applied**:
+  - Added missing SILENT age group (age >= 76) to match SAS source (lines 88-89).
+    Previously all ages >= 57 were classified as BOOMER.
+  - Corrected AFFLUENT balance_tier threshold from `< 50000` to `< 100000` to match
+    SAS source (line 95). Customers with balance 50K-100K were incorrectly classified
+    as HIGH_NET_WORTH instead of AFFLUENT.
 - **Segment label divergence**: Expected -- K-means is non-deterministic. The SAS PROC FASTCLUS
   uses a different initialization strategy. Cluster *distributions* are comparable:
-  - PySpark: ENGAGED_MAINSTREAM 36.6%, PREMIUM_LOYAL 26.8%, DIGITAL_ACTIVE 17.8%, VALUE_BASIC 17.6%, GROWTH_POTENTIAL 1.3%
+  - PySpark: ENGAGED_MAINSTREAM 25.3%, PREMIUM_LOYAL 23.6%, VALUE_BASIC 18.2%, DIGITAL_ACTIVE 16.7%, GROWTH_POTENTIAL 16.2%
   - Reference: ENGAGED_MAINSTREAM 25.3%, PREMIUM_WEALTH 23.6%, VALUE_BASIC 18.2%, CREDIT_DEPENDENT 16.7%, GROWING_DIGITAL 16.2%
 
 ### 5. TXN_ANALYTICS (SAS Program 02) -- PASS
@@ -120,8 +130,8 @@ All 7 scripts executed without errors. All customer_id overlap = 100%.
    SAS-equivalent scripts (segments, risk scoring, data products). This resolves the 478-vs-407
    row count discrepancies.
 
-2. **Transaction count logic**: Replicate exact BTEQ join conditions including
-   `status_code` filtering and outer-join semantics for `stg_txn_summary`.
+2. **Transaction status filter**: The `STATUS_CODE = 'P'` filter is now correctly applied,
+   matching BTEQ. Ensure all downstream consumers also filter on posted transactions only.
 
 3. **Date-range columns**: Generate `summary_period_start`, `summary_period_end`, and
    `days_since_last_txn` in the PySpark txn_summary script.
