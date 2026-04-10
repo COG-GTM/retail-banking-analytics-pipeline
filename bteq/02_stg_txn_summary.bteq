@@ -1,0 +1,169 @@
+/* ============================================================================= */
+/* BTEQ Script: 02_stg_txn_summary.bteq                                         */
+/* Purpose:     Aggregate transaction-level data into per-customer/account       */
+/*              summary metrics over a configurable lookback window.             */
+/* Source:      TXN_PROCESSING_DB.TRANSACTIONS, TRANSACTION_TYPES               */
+/*              CORE_BANKING_DB.ACCOUNTS                                         */
+/* Target:      ETL_STAGING_DB.STG_TXN_SUMMARY                                  */
+/* Schedule:    Daily, 02:30 AM ET  (runs after 01_stg_customer_360)             */
+/* ============================================================================= */
+
+.SET ERRORLEVEL 3807 SEVERITY 0;
+.SET WIDTH 254;
+.SET SESSION TRANSACTION BTET;
+
+.LOGON ${TD_SERVER}/${TD_USERNAME},;
+
+/* ------------------------------------------------------------------------- */
+/* Step 1: Define the lookback window via volatile table                      */
+/* ------------------------------------------------------------------------- */
+CREATE VOLATILE TABLE VT_RUN_PARAMS AS
+(
+    SELECT
+        ADD_MONTHS(CURRENT_DATE, -${LOOKBACK_MONTHS}) AS PERIOD_START,
+        CURRENT_DATE                                   AS PERIOD_END
+)
+WITH DATA
+ON COMMIT PRESERVE ROWS;
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+/* ------------------------------------------------------------------------- */
+/* Step 2: Drop and rebuild the staging table                                */
+/* ------------------------------------------------------------------------- */
+DROP TABLE ETL_STAGING_DB.STG_TXN_SUMMARY;
+
+.IF ERRORCODE <> 0 THEN .GOTO STEP2_CONTINUE;
+.LABEL STEP2_CONTINUE;
+
+CREATE MULTISET TABLE ETL_STAGING_DB.STG_TXN_SUMMARY AS
+(
+    SELECT
+        acct.CUSTOMER_ID,
+        acct.ACCOUNT_ID,
+        acct.ACCOUNT_TYPE,
+        rp.PERIOD_START                                             AS SUMMARY_PERIOD_START,
+        rp.PERIOD_END                                               AS SUMMARY_PERIOD_END,
+        /* ---- Volume Counts ---- */
+        COUNT(*)                                                    AS TXN_COUNT_TOTAL,
+        SUM(CASE WHEN tt.CATEGORY = 'DEBIT'    THEN 1 ELSE 0 END)  AS TXN_COUNT_DEBIT,
+        SUM(CASE WHEN tt.CATEGORY = 'CREDIT'   THEN 1 ELSE 0 END)  AS TXN_COUNT_CREDIT,
+        SUM(CASE WHEN tt.CATEGORY = 'FEE'      THEN 1 ELSE 0 END)  AS TXN_COUNT_FEE,
+        /* ---- Dollar Amounts ---- */
+        SUM(CASE WHEN tt.CATEGORY = 'DEBIT'
+                 THEN ABS(t.AMOUNT) ELSE 0 END)                    AS AMT_TOTAL_DEBIT,
+        SUM(CASE WHEN tt.CATEGORY = 'CREDIT'
+                 THEN t.AMOUNT ELSE 0 END)                          AS AMT_TOTAL_CREDIT,
+        SUM(CASE WHEN tt.CATEGORY = 'FEE'
+                 THEN ABS(t.AMOUNT) ELSE 0 END)                    AS AMT_TOTAL_FEES,
+        /* ---- Averages ---- */
+        AVG(CASE WHEN tt.CATEGORY = 'DEBIT'
+                 THEN ABS(t.AMOUNT) ELSE NULL END)                 AS AMT_AVG_DEBIT,
+        AVG(CASE WHEN tt.CATEGORY = 'CREDIT'
+                 THEN t.AMOUNT ELSE NULL END)                       AS AMT_AVG_CREDIT,
+        /* ---- Maximums ---- */
+        MAX(CASE WHEN tt.CATEGORY = 'DEBIT'
+                 THEN ABS(t.AMOUNT) ELSE 0 END)                    AS AMT_MAX_SINGLE_DEBIT,
+        MAX(CASE WHEN tt.CATEGORY = 'CREDIT'
+                 THEN t.AMOUNT ELSE 0 END)                          AS AMT_MAX_SINGLE_CREDIT,
+        /* ---- Merchant Diversity ---- */
+        COUNT(DISTINCT t.MERCHANT_NAME)                             AS DISTINCT_MERCHANTS,
+        /* ---- Top merchant category (by spend) ---- */
+        MAX(top_cat.MERCHANT_CATEGORY)                              AS TOP_MERCHANT_CATEGORY,
+        /* ---- Channel Mix ---- */
+        CAST(SUM(CASE WHEN t.CHANNEL_CODE = 'ATM' THEN 1 ELSE 0 END) * 100.0
+             / NULLIFZERO(COUNT(*)) AS DECIMAL(5,2))                AS PCT_ATM,
+        CAST(SUM(CASE WHEN t.CHANNEL_CODE = 'POS' THEN 1 ELSE 0 END) * 100.0
+             / NULLIFZERO(COUNT(*)) AS DECIMAL(5,2))                AS PCT_POS,
+        CAST(SUM(CASE WHEN t.CHANNEL_CODE = 'WEB' THEN 1 ELSE 0 END) * 100.0
+             / NULLIFZERO(COUNT(*)) AS DECIMAL(5,2))                AS PCT_WEB,
+        CAST(SUM(CASE WHEN t.CHANNEL_CODE IN ('MOB') THEN 1 ELSE 0 END) * 100.0
+             / NULLIFZERO(COUNT(*)) AS DECIMAL(5,2))                AS PCT_MOBILE,
+        /* ---- Recency ---- */
+        CAST(CURRENT_DATE - MAX(t.TRANSACTION_DATE) AS INTEGER)     AS DAYS_SINCE_LAST_TXN,
+        CURRENT_TIMESTAMP(6)                                        AS LOAD_TS
+    FROM
+        TXN_PROCESSING_DB.TRANSACTIONS t
+    INNER JOIN
+        CORE_BANKING_DB.ACCOUNTS acct
+        ON t.ACCOUNT_ID = acct.ACCOUNT_ID
+    INNER JOIN
+        TXN_PROCESSING_DB.TRANSACTION_TYPES tt
+        ON t.TRANSACTION_TYPE_CD = tt.TRANSACTION_TYPE_CD
+    CROSS JOIN
+        VT_RUN_PARAMS rp
+    /* Subquery: top merchant category per account by total absolute spend */
+    LEFT JOIN (
+        SELECT
+            t2.ACCOUNT_ID,
+            t2.MERCHANT_CATEGORY
+        FROM TXN_PROCESSING_DB.TRANSACTIONS t2
+        INNER JOIN VT_RUN_PARAMS rp2
+            ON t2.TRANSACTION_DATE BETWEEN rp2.PERIOD_START AND rp2.PERIOD_END
+        WHERE t2.STATUS_CODE = 'P'
+          AND t2.MERCHANT_CATEGORY IS NOT NULL
+        QUALIFY ROW_NUMBER() OVER (
+            PARTITION BY t2.ACCOUNT_ID
+            ORDER BY SUM(ABS(t2.AMOUNT)) OVER (
+                PARTITION BY t2.ACCOUNT_ID, t2.MERCHANT_CATEGORY
+            ) DESC
+        ) = 1
+    ) top_cat
+        ON t.ACCOUNT_ID = top_cat.ACCOUNT_ID
+    WHERE
+        t.TRANSACTION_DATE BETWEEN rp.PERIOD_START AND rp.PERIOD_END
+        AND t.STATUS_CODE = 'P'   /* Posted transactions only */
+    GROUP BY
+        acct.CUSTOMER_ID,
+        acct.ACCOUNT_ID,
+        acct.ACCOUNT_TYPE,
+        rp.PERIOD_START,
+        rp.PERIOD_END,
+        top_cat.MERCHANT_CATEGORY
+)
+WITH DATA
+PRIMARY INDEX (CUSTOMER_ID, ACCOUNT_ID);
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+/* ------------------------------------------------------------------------- */
+/* Step 3: Collect statistics                                                */
+/* ------------------------------------------------------------------------- */
+COLLECT STATISTICS COLUMN (CUSTOMER_ID)              ON ETL_STAGING_DB.STG_TXN_SUMMARY;
+COLLECT STATISTICS COLUMN (CUSTOMER_ID, ACCOUNT_ID)  ON ETL_STAGING_DB.STG_TXN_SUMMARY;
+COLLECT STATISTICS COLUMN (ACCOUNT_TYPE)             ON ETL_STAGING_DB.STG_TXN_SUMMARY;
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+/* ------------------------------------------------------------------------- */
+/* Step 4: Validation                                                        */
+/* ------------------------------------------------------------------------- */
+SELECT
+    'STG_TXN_SUMMARY'  AS TABLE_NAME,
+    COUNT(*)           AS ROW_COUNT,
+    COUNT(DISTINCT CUSTOMER_ID) AS DISTINCT_CUSTOMERS,
+    MIN(SUMMARY_PERIOD_START)   AS MIN_PERIOD,
+    MAX(SUMMARY_PERIOD_END)     AS MAX_PERIOD,
+    CURRENT_TIMESTAMP           AS CHECK_TS
+FROM ETL_STAGING_DB.STG_TXN_SUMMARY;
+
+.IF ACTIVITYCOUNT = 0 THEN .EXIT 99;
+
+/* ------------------------------------------------------------------------- */
+/* Step 5: Log completion                                                    */
+/* ------------------------------------------------------------------------- */
+INSERT INTO ETL_STAGING_DB.ETL_RUN_LOG
+(JOB_NAME, STEP_NAME, STATUS, ROW_COUNT, START_TS, END_TS)
+SELECT
+    '02_stg_txn_summary',
+    'FULL_LOAD',
+    'SUCCESS',
+    COUNT(*),
+    CURRENT_TIMESTAMP(6),
+    CURRENT_TIMESTAMP(6)
+FROM ETL_STAGING_DB.STG_TXN_SUMMARY;
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+.LOGOFF;
+.EXIT 0;

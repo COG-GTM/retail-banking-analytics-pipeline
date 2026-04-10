@@ -1,0 +1,355 @@
+/* ============================================================================= */
+/* BTEQ Script: 03_stg_risk_factors.bteq                                         */
+/* Purpose:     Compute risk-related feature vectors per customer for the SAS    */
+/*              risk scoring model. Combines balance behaviour, payment history, */
+/*              transaction velocity, and external credit bureau data.           */
+/* Source:      CORE_BANKING_DB.CUSTOMERS, ACCOUNTS                             */
+/*              TXN_PROCESSING_DB.TRANSACTIONS, TRANSACTION_TYPES               */
+/* Target:      ETL_STAGING_DB.STG_RISK_FACTORS                                  */
+/* Schedule:    Daily, 03:00 AM ET  (runs after 02_stg_txn_summary)              */
+/* ============================================================================= */
+
+.SET ERRORLEVEL 3807 SEVERITY 0;
+.SET WIDTH 254;
+.SET SESSION TRANSACTION BTET;
+
+.LOGON ${TD_SERVER}/${TD_USERNAME},;
+
+/* ========================================================================= */
+/* INTERMEDIATE TABLE 1: Daily balance snapshots for volatility calculation   */
+/* ========================================================================= */
+DROP TABLE ETL_STAGING_DB.WRK_DAILY_BALANCE;
+
+.IF ERRORCODE <> 0 THEN .GOTO WRK1_CONTINUE;
+.LABEL WRK1_CONTINUE;
+
+CREATE MULTISET TABLE ETL_STAGING_DB.WRK_DAILY_BALANCE AS
+(
+    SELECT
+        acct.CUSTOMER_ID,
+        t.ACCOUNT_ID,
+        t.TRANSACTION_DATE,
+        /* Use the running balance as-of each transaction date */
+        t.RUNNING_BALANCE AS EOD_BALANCE
+    FROM
+        TXN_PROCESSING_DB.TRANSACTIONS t
+    INNER JOIN
+        CORE_BANKING_DB.ACCOUNTS acct
+        ON t.ACCOUNT_ID = acct.ACCOUNT_ID
+    WHERE
+        t.TRANSACTION_DATE >= ADD_MONTHS(CURRENT_DATE, -3)
+        AND t.STATUS_CODE = 'P'
+    /* Keep only the last transaction per account per day */
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY t.ACCOUNT_ID, t.TRANSACTION_DATE
+        ORDER BY t.TRANSACTION_TS DESC
+    ) = 1
+)
+WITH DATA
+PRIMARY INDEX (CUSTOMER_ID, ACCOUNT_ID);
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+COLLECT STATISTICS COLUMN (CUSTOMER_ID) ON ETL_STAGING_DB.WRK_DAILY_BALANCE;
+
+/* ========================================================================= */
+/* INTERMEDIATE TABLE 2: Payment behaviour on credit and loan accounts       */
+/* ========================================================================= */
+DROP TABLE ETL_STAGING_DB.WRK_PAYMENT_HISTORY;
+
+.IF ERRORCODE <> 0 THEN .GOTO WRK2_CONTINUE;
+.LABEL WRK2_CONTINUE;
+
+CREATE MULTISET TABLE ETL_STAGING_DB.WRK_PAYMENT_HISTORY AS
+(
+    SELECT
+        acct.CUSTOMER_ID,
+        acct.ACCOUNT_ID,
+        /* Total scheduled payments */
+        COUNT(*) AS TOTAL_PAYMENTS,
+        /* On-time payments (transaction posted within 3 days of due date proxy) */
+        SUM(CASE
+            WHEN t.TRANSACTION_DATE <= ADD_MONTHS(acct.OPEN_DATE,
+                 (MONTHS_BETWEEN(t.TRANSACTION_DATE, acct.OPEN_DATE) (INTEGER)) + 1)
+            THEN 1 ELSE 0
+        END) AS ONTIME_PAYMENTS,
+        /* Late payment count */
+        SUM(CASE
+            WHEN t.TRANSACTION_DATE > ADD_MONTHS(acct.OPEN_DATE,
+                 (MONTHS_BETWEEN(t.TRANSACTION_DATE, acct.OPEN_DATE) (INTEGER)) + 1)
+            THEN 1 ELSE 0
+        END) AS LATE_PAYMENTS,
+        /* Months since last late payment */
+        CAST(MONTHS_BETWEEN(
+            CURRENT_DATE,
+            COALESCE(MAX(CASE
+                WHEN t.TRANSACTION_DATE > ADD_MONTHS(acct.OPEN_DATE,
+                     (MONTHS_BETWEEN(t.TRANSACTION_DATE, acct.OPEN_DATE) (INTEGER)) + 1)
+                THEN t.TRANSACTION_DATE
+            END), acct.OPEN_DATE)
+        ) AS INTEGER) AS MONTHS_SINCE_LAST_LATE
+    FROM
+        TXN_PROCESSING_DB.TRANSACTIONS t
+    INNER JOIN
+        CORE_BANKING_DB.ACCOUNTS acct
+        ON t.ACCOUNT_ID = acct.ACCOUNT_ID
+    INNER JOIN
+        TXN_PROCESSING_DB.TRANSACTION_TYPES tt
+        ON t.TRANSACTION_TYPE_CD = tt.TRANSACTION_TYPE_CD
+    WHERE
+        acct.ACCOUNT_TYPE IN ('CREDIT', 'LOAN')
+        AND tt.CATEGORY = 'CREDIT'          /* Payment transactions */
+        AND t.STATUS_CODE = 'P'
+        AND t.TRANSACTION_DATE >= ADD_MONTHS(CURRENT_DATE, -24)
+    GROUP BY
+        acct.CUSTOMER_ID,
+        acct.ACCOUNT_ID
+)
+WITH DATA
+PRIMARY INDEX (CUSTOMER_ID, ACCOUNT_ID);
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+COLLECT STATISTICS COLUMN (CUSTOMER_ID) ON ETL_STAGING_DB.WRK_PAYMENT_HISTORY;
+
+/* ========================================================================= */
+/* FINAL TABLE: Assemble all risk factors into the staging table              */
+/* ========================================================================= */
+DROP TABLE ETL_STAGING_DB.STG_RISK_FACTORS;
+
+.IF ERRORCODE <> 0 THEN .GOTO FINAL_CONTINUE;
+.LABEL FINAL_CONTINUE;
+
+CREATE MULTISET TABLE ETL_STAGING_DB.STG_RISK_FACTORS AS
+(
+    SELECT
+        c.CUSTOMER_ID,
+
+        /* ---- Overdraft & NSF ---- */
+        COALESCE(overdraft.OVERDRAFT_COUNT, 0)          AS ACCOUNT_OVERDRAFT_CNT,
+        COALESCE(overdraft.NSF_TOTAL, 0.00)             AS NSF_FEE_TOTAL,
+
+        /* ---- Large Withdrawal Detection ---- */
+        COALESCE(lg_wd.LARGE_WD_CNT, 0)                AS LARGE_WITHDRAWAL_CNT,
+        COALESCE(lg_wd.LARGE_WD_AMT, 0.00)             AS LARGE_WITHDRAWAL_AMT,
+
+        /* ---- Balance Metrics ---- */
+        COALESCE(bal.AVG_BAL_30D, 0.00)                 AS AVG_DAILY_BALANCE_30D,
+        COALESCE(bal.AVG_BAL_90D, 0.00)                 AS AVG_DAILY_BALANCE_90D,
+        COALESCE(bal.BAL_STDDEV, 0.0000)                AS BALANCE_VOLATILITY,
+
+        /* ---- Credit Utilization ---- */
+        CASE
+            WHEN credit.TOTAL_CREDIT_LIMIT > 0
+            THEN CAST(credit.TOTAL_CREDIT_BAL / credit.TOTAL_CREDIT_LIMIT AS DECIMAL(5,4))
+            ELSE 0.0000
+        END                                             AS CREDIT_UTIL_RATIO,
+
+        /* ---- Payment History ---- */
+        CASE
+            WHEN pmh.TOTAL_PAYMENTS > 0
+            THEN CAST(pmh.ONTIME_PAYMENTS * 100.0 / pmh.TOTAL_PAYMENTS AS DECIMAL(5,2))
+            ELSE 100.00
+        END                                             AS PAYMENT_ONTIME_PCT,
+        COALESCE(pmh.LATE_PAYMENTS, 0)                  AS PAYMENT_LATE_CNT,
+        COALESCE(pmh.MONTHS_SINCE_LAST_LATE, 999)       AS MONTHS_SINCE_LAST_LATE,
+
+        /* ---- External Bureau Score (placeholder join) ---- */
+        COALESCE(bureau.CREDIT_SCORE, 0)                AS EXTERNAL_CREDIT_SCORE,
+
+        /* ---- Transaction Velocity ---- */
+        COALESCE(vel.DEBIT_7D, 0.00)                    AS DEBIT_VELOCITY_7D,
+        COALESCE(vel.DEBIT_30D, 0.00)                   AS DEBIT_VELOCITY_30D,
+
+        /* ---- Merchant Risk Indicators ---- */
+        COALESCE(merch.NEW_MERCH_30D, 0)                AS NEW_MERCHANT_CNT_30D,
+        COALESCE(merch.INTL_TXN_CNT, 0)                AS INTERNATIONAL_TXN_CNT,
+        COALESCE(merch.HIGH_RISK_CNT, 0)                AS HIGH_RISK_MERCHANT_CNT,
+
+        CURRENT_TIMESTAMP(6)                            AS LOAD_TS
+
+    FROM
+        CORE_BANKING_DB.CUSTOMERS c
+
+    /* -- Overdraft / NSF fees in last 12 months -- */
+    LEFT JOIN (
+        SELECT
+            acct.CUSTOMER_ID,
+            SUM(CASE WHEN t.RUNNING_BALANCE < 0 THEN 1 ELSE 0 END) AS OVERDRAFT_COUNT,
+            SUM(CASE WHEN tt.CATEGORY = 'FEE' AND tt.DESCRIPTION LIKE '%NSF%'
+                     THEN ABS(t.AMOUNT) ELSE 0 END) AS NSF_TOTAL
+        FROM TXN_PROCESSING_DB.TRANSACTIONS t
+        INNER JOIN CORE_BANKING_DB.ACCOUNTS acct ON t.ACCOUNT_ID = acct.ACCOUNT_ID
+        INNER JOIN TXN_PROCESSING_DB.TRANSACTION_TYPES tt ON t.TRANSACTION_TYPE_CD = tt.TRANSACTION_TYPE_CD
+        WHERE t.TRANSACTION_DATE >= ADD_MONTHS(CURRENT_DATE, -12)
+          AND t.STATUS_CODE = 'P'
+        GROUP BY acct.CUSTOMER_ID
+    ) overdraft
+        ON c.CUSTOMER_ID = overdraft.CUSTOMER_ID
+
+    /* -- Large withdrawals (>= $5,000 single debit) -- */
+    LEFT JOIN (
+        SELECT
+            acct.CUSTOMER_ID,
+            COUNT(*)            AS LARGE_WD_CNT,
+            SUM(ABS(t.AMOUNT))  AS LARGE_WD_AMT
+        FROM TXN_PROCESSING_DB.TRANSACTIONS t
+        INNER JOIN CORE_BANKING_DB.ACCOUNTS acct ON t.ACCOUNT_ID = acct.ACCOUNT_ID
+        INNER JOIN TXN_PROCESSING_DB.TRANSACTION_TYPES tt ON t.TRANSACTION_TYPE_CD = tt.TRANSACTION_TYPE_CD
+        WHERE tt.CATEGORY = 'DEBIT'
+          AND ABS(t.AMOUNT) >= 5000
+          AND t.TRANSACTION_DATE >= ADD_MONTHS(CURRENT_DATE, -12)
+          AND t.STATUS_CODE = 'P'
+        GROUP BY acct.CUSTOMER_ID
+    ) lg_wd
+        ON c.CUSTOMER_ID = lg_wd.CUSTOMER_ID
+
+    /* -- Average daily balance (30-day and 90-day) and volatility -- */
+    LEFT JOIN (
+        SELECT
+            CUSTOMER_ID,
+            AVG(CASE WHEN TRANSACTION_DATE >= CURRENT_DATE - 30  THEN EOD_BALANCE END) AS AVG_BAL_30D,
+            AVG(CASE WHEN TRANSACTION_DATE >= CURRENT_DATE - 90  THEN EOD_BALANCE END) AS AVG_BAL_90D,
+            STDDEV_POP(EOD_BALANCE)                                                     AS BAL_STDDEV
+        FROM ETL_STAGING_DB.WRK_DAILY_BALANCE
+        GROUP BY CUSTOMER_ID
+    ) bal
+        ON c.CUSTOMER_ID = bal.CUSTOMER_ID
+
+    /* -- Credit utilization ratio -- */
+    LEFT JOIN (
+        SELECT
+            CUSTOMER_ID,
+            SUM(COALESCE(CURRENT_BALANCE, 0)) AS TOTAL_CREDIT_BAL,
+            SUM(COALESCE(CREDIT_LIMIT, 0))    AS TOTAL_CREDIT_LIMIT
+        FROM CORE_BANKING_DB.ACCOUNTS
+        WHERE ACCOUNT_TYPE = 'CREDIT'
+          AND ACCOUNT_STATUS = 'O'
+        GROUP BY CUSTOMER_ID
+    ) credit
+        ON c.CUSTOMER_ID = credit.CUSTOMER_ID
+
+    /* -- Payment history summary -- */
+    LEFT JOIN (
+        SELECT
+            CUSTOMER_ID,
+            SUM(TOTAL_PAYMENTS)             AS TOTAL_PAYMENTS,
+            SUM(ONTIME_PAYMENTS)            AS ONTIME_PAYMENTS,
+            SUM(LATE_PAYMENTS)              AS LATE_PAYMENTS,
+            MIN(MONTHS_SINCE_LAST_LATE)     AS MONTHS_SINCE_LAST_LATE
+        FROM ETL_STAGING_DB.WRK_PAYMENT_HISTORY
+        GROUP BY CUSTOMER_ID
+    ) pmh
+        ON c.CUSTOMER_ID = pmh.CUSTOMER_ID
+
+    /* -- External bureau score (simulated lookup) -- */
+    LEFT JOIN (
+        SELECT
+            CUSTOMER_ID,
+            EXTERNAL_CREDIT_SCORE AS CREDIT_SCORE
+        FROM CORE_BANKING_DB.CUSTOMER_BUREAU_SCORES
+        QUALIFY ROW_NUMBER() OVER (
+            PARTITION BY CUSTOMER_ID ORDER BY REPORT_DATE DESC
+        ) = 1
+    ) bureau
+        ON c.CUSTOMER_ID = bureau.CUSTOMER_ID
+
+    /* -- Debit velocity (7-day and 30-day rolling totals) -- */
+    LEFT JOIN (
+        SELECT
+            acct.CUSTOMER_ID,
+            SUM(CASE WHEN t.TRANSACTION_DATE >= CURRENT_DATE - 7
+                     THEN ABS(t.AMOUNT) ELSE 0 END) AS DEBIT_7D,
+            SUM(CASE WHEN t.TRANSACTION_DATE >= CURRENT_DATE - 30
+                     THEN ABS(t.AMOUNT) ELSE 0 END) AS DEBIT_30D
+        FROM TXN_PROCESSING_DB.TRANSACTIONS t
+        INNER JOIN CORE_BANKING_DB.ACCOUNTS acct ON t.ACCOUNT_ID = acct.ACCOUNT_ID
+        INNER JOIN TXN_PROCESSING_DB.TRANSACTION_TYPES tt ON t.TRANSACTION_TYPE_CD = tt.TRANSACTION_TYPE_CD
+        WHERE tt.CATEGORY = 'DEBIT'
+          AND t.TRANSACTION_DATE >= CURRENT_DATE - 30
+          AND t.STATUS_CODE = 'P'
+        GROUP BY acct.CUSTOMER_ID
+    ) vel
+        ON c.CUSTOMER_ID = vel.CUSTOMER_ID
+
+    /* -- Merchant risk indicators -- */
+    LEFT JOIN (
+        SELECT
+            acct.CUSTOMER_ID,
+            /* New merchants in last 30 days that the customer never used before */
+            COUNT(DISTINCT CASE
+                WHEN t.TRANSACTION_DATE >= CURRENT_DATE - 30
+                 AND t.MERCHANT_NAME NOT IN (
+                     SELECT DISTINCT t2.MERCHANT_NAME
+                     FROM TXN_PROCESSING_DB.TRANSACTIONS t2
+                     WHERE t2.ACCOUNT_ID = t.ACCOUNT_ID
+                       AND t2.TRANSACTION_DATE < CURRENT_DATE - 30
+                       AND t2.MERCHANT_NAME IS NOT NULL
+                 )
+                THEN t.MERCHANT_NAME
+            END) AS NEW_MERCH_30D,
+            /* International transactions (channel heuristic) */
+            SUM(CASE WHEN t.CHANNEL_CODE = 'INTL' THEN 1 ELSE 0 END) AS INTL_TXN_CNT,
+            /* High-risk merchant categories */
+            SUM(CASE WHEN t.MERCHANT_CATEGORY IN (
+                'GAMBLING', 'WIRE_TRANSFER_INTL', 'CRYPTO_EXCHANGE', 'PAWN_SHOP'
+            ) THEN 1 ELSE 0 END) AS HIGH_RISK_CNT
+        FROM TXN_PROCESSING_DB.TRANSACTIONS t
+        INNER JOIN CORE_BANKING_DB.ACCOUNTS acct ON t.ACCOUNT_ID = acct.ACCOUNT_ID
+        WHERE t.TRANSACTION_DATE >= ADD_MONTHS(CURRENT_DATE, -6)
+          AND t.STATUS_CODE = 'P'
+        GROUP BY acct.CUSTOMER_ID
+    ) merch
+        ON c.CUSTOMER_ID = merch.CUSTOMER_ID
+
+    WHERE c.CUSTOMER_STATUS IN ('A', 'I')
+)
+WITH DATA
+PRIMARY INDEX (CUSTOMER_ID);
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+/* ------------------------------------------------------------------------- */
+/* Collect Statistics                                                        */
+/* ------------------------------------------------------------------------- */
+COLLECT STATISTICS COLUMN (CUSTOMER_ID) ON ETL_STAGING_DB.STG_RISK_FACTORS;
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+/* ------------------------------------------------------------------------- */
+/* Validation                                                                */
+/* ------------------------------------------------------------------------- */
+SELECT
+    'STG_RISK_FACTORS'  AS TABLE_NAME,
+    COUNT(*)            AS ROW_COUNT,
+    AVG(EXTERNAL_CREDIT_SCORE) AS AVG_BUREAU_SCORE,
+    AVG(CREDIT_UTIL_RATIO)     AS AVG_CREDIT_UTIL,
+    CURRENT_TIMESTAMP          AS CHECK_TS
+FROM ETL_STAGING_DB.STG_RISK_FACTORS;
+
+.IF ACTIVITYCOUNT = 0 THEN .EXIT 99;
+
+/* ------------------------------------------------------------------------- */
+/* Cleanup work tables                                                       */
+/* ------------------------------------------------------------------------- */
+DROP TABLE ETL_STAGING_DB.WRK_DAILY_BALANCE;
+DROP TABLE ETL_STAGING_DB.WRK_PAYMENT_HISTORY;
+
+/* ------------------------------------------------------------------------- */
+/* Log completion                                                            */
+/* ------------------------------------------------------------------------- */
+INSERT INTO ETL_STAGING_DB.ETL_RUN_LOG
+(JOB_NAME, STEP_NAME, STATUS, ROW_COUNT, START_TS, END_TS)
+SELECT
+    '03_stg_risk_factors',
+    'FULL_LOAD',
+    'SUCCESS',
+    COUNT(*),
+    CURRENT_TIMESTAMP(6),
+    CURRENT_TIMESTAMP(6)
+FROM ETL_STAGING_DB.STG_RISK_FACTORS;
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+.LOGOFF;
+.EXIT 0;

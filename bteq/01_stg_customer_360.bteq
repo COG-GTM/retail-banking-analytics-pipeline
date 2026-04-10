@@ -1,0 +1,153 @@
+/* ============================================================================= */
+/* BTEQ Script: 01_stg_customer_360.bteq                                        */
+/* Purpose:     Build a denormalized customer-360 staging table by joining       */
+/*              customer, account, and address data from the core banking DB.    */
+/* Source:      CORE_BANKING_DB.CUSTOMERS, ACCOUNTS, ADDRESSES                   */
+/* Target:      ETL_STAGING_DB.STG_CUSTOMER_360                                  */
+/* Schedule:    Daily, 02:00 AM ET                                               */
+/* ============================================================================= */
+
+.SET ERRORLEVEL 3807 SEVERITY 0;   /* Suppress "table does not exist" on DROP   */
+.SET WIDTH 254;
+.SET SESSION TRANSACTION BTET;
+
+.LOGON ${TD_SERVER}/${TD_USERNAME},;
+
+/* ------------------------------------------------------------------------- */
+/* Step 1: Drop and recreate the staging table                               */
+/* ------------------------------------------------------------------------- */
+DROP TABLE ETL_STAGING_DB.STG_CUSTOMER_360;
+
+.IF ERRORCODE <> 0 THEN .GOTO STEP1_CONTINUE;
+.LABEL STEP1_CONTINUE;
+
+CREATE MULTISET TABLE ETL_STAGING_DB.STG_CUSTOMER_360 AS
+(
+    SELECT
+        c.CUSTOMER_ID,
+        c.FIRST_NAME,
+        c.LAST_NAME,
+        c.DATE_OF_BIRTH,
+        /* Derive age from date of birth */
+        CAST((CURRENT_DATE - c.DATE_OF_BIRTH) / 365.25 AS SMALLINT)  AS AGE,
+        c.CUSTOMER_SINCE,
+        /* Tenure in months since account opening */
+        CAST(MONTHS_BETWEEN(CURRENT_DATE, c.CUSTOMER_SINCE) AS INTEGER) AS TENURE_MONTHS,
+        c.CUSTOMER_STATUS,
+        c.SEGMENT_CODE,
+        c.BRANCH_ID,
+        /* Concatenated primary address */
+        TRIM(a.ADDRESS_LINE_1) || COALESCE(', ' || TRIM(a.ADDRESS_LINE_2), '') AS PRIMARY_ADDRESS,
+        a.CITY,
+        a.STATE_CODE,
+        a.ZIP_CODE,
+        /* Account portfolio metrics */
+        acct_agg.NUM_ACCOUNTS,
+        acct_agg.NUM_ACTIVE_ACCOUNTS,
+        acct_agg.HAS_CHECKING,
+        acct_agg.HAS_SAVINGS,
+        acct_agg.HAS_CREDIT,
+        acct_agg.HAS_LOAN,
+        acct_agg.TOTAL_BALANCE,
+        acct_agg.TOTAL_CREDIT_LIMIT,
+        /* Credit utilization = total credit balance / total credit limit */
+        CASE
+            WHEN acct_agg.TOTAL_CREDIT_LIMIT > 0
+            THEN CAST(acct_agg.CREDIT_BALANCE / acct_agg.TOTAL_CREDIT_LIMIT * 100 AS DECIMAL(5,2))
+            ELSE 0.00
+        END AS CREDIT_UTILIZATION_PCT,
+        CURRENT_TIMESTAMP(6) AS LOAD_TS
+    FROM
+        CORE_BANKING_DB.CUSTOMERS c
+    /* Primary address (most recent HOME address) */
+    LEFT JOIN (
+        SELECT
+            CUSTOMER_ID,
+            ADDRESS_LINE_1,
+            ADDRESS_LINE_2,
+            CITY,
+            STATE_CODE,
+            ZIP_CODE
+        FROM CORE_BANKING_DB.ADDRESSES
+        WHERE ADDRESS_TYPE = 'HOME'
+          AND (EXPIRATION_DATE IS NULL OR EXPIRATION_DATE > CURRENT_DATE)
+        QUALIFY ROW_NUMBER() OVER (
+            PARTITION BY CUSTOMER_ID
+            ORDER BY EFFECTIVE_DATE DESC
+        ) = 1
+    ) a
+        ON c.CUSTOMER_ID = a.CUSTOMER_ID
+    /* Aggregated account metrics */
+    LEFT JOIN (
+        SELECT
+            CUSTOMER_ID,
+            COUNT(*)                                                        AS NUM_ACCOUNTS,
+            SUM(CASE WHEN ACCOUNT_STATUS = 'O' THEN 1 ELSE 0 END)         AS NUM_ACTIVE_ACCOUNTS,
+            MAX(CASE WHEN ACCOUNT_TYPE = 'CHECKING' THEN 'Y' ELSE 'N' END) AS HAS_CHECKING,
+            MAX(CASE WHEN ACCOUNT_TYPE = 'SAVINGS'  THEN 'Y' ELSE 'N' END) AS HAS_SAVINGS,
+            MAX(CASE WHEN ACCOUNT_TYPE = 'CREDIT'   THEN 'Y' ELSE 'N' END) AS HAS_CREDIT,
+            MAX(CASE WHEN ACCOUNT_TYPE = 'LOAN'     THEN 'Y' ELSE 'N' END) AS HAS_LOAN,
+            SUM(COALESCE(CURRENT_BALANCE, 0))                               AS TOTAL_BALANCE,
+            SUM(CASE WHEN ACCOUNT_TYPE = 'CREDIT'
+                     THEN COALESCE(CREDIT_LIMIT, 0)
+                     ELSE 0 END)                                            AS TOTAL_CREDIT_LIMIT,
+            SUM(CASE WHEN ACCOUNT_TYPE = 'CREDIT'
+                     THEN COALESCE(CURRENT_BALANCE, 0)
+                     ELSE 0 END)                                            AS CREDIT_BALANCE
+        FROM CORE_BANKING_DB.ACCOUNTS
+        GROUP BY CUSTOMER_ID
+    ) acct_agg
+        ON c.CUSTOMER_ID = acct_agg.CUSTOMER_ID
+    WHERE c.CUSTOMER_STATUS IN ('A', 'I')   /* Exclude closed customers */
+)
+WITH DATA
+PRIMARY INDEX (CUSTOMER_ID);
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+/* ------------------------------------------------------------------------- */
+/* Step 2: Collect statistics for downstream query performance               */
+/* ------------------------------------------------------------------------- */
+COLLECT STATISTICS COLUMN (CUSTOMER_ID)     ON ETL_STAGING_DB.STG_CUSTOMER_360;
+COLLECT STATISTICS COLUMN (STATE_CODE)      ON ETL_STAGING_DB.STG_CUSTOMER_360;
+COLLECT STATISTICS COLUMN (CUSTOMER_STATUS) ON ETL_STAGING_DB.STG_CUSTOMER_360;
+COLLECT STATISTICS COLUMN (SEGMENT_CODE)    ON ETL_STAGING_DB.STG_CUSTOMER_360;
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+/* ------------------------------------------------------------------------- */
+/* Step 3: Validation - row count check                                      */
+/* ------------------------------------------------------------------------- */
+SELECT
+    'STG_CUSTOMER_360' AS TABLE_NAME,
+    COUNT(*)           AS ROW_COUNT,
+    CURRENT_TIMESTAMP  AS CHECK_TS
+FROM ETL_STAGING_DB.STG_CUSTOMER_360;
+
+.IF ACTIVITYCOUNT = 0 THEN .EXIT 99;
+
+/* ------------------------------------------------------------------------- */
+/* Step 4: Log completion                                                    */
+/* ------------------------------------------------------------------------- */
+INSERT INTO ETL_STAGING_DB.ETL_RUN_LOG
+(
+    JOB_NAME,
+    STEP_NAME,
+    STATUS,
+    ROW_COUNT,
+    START_TS,
+    END_TS
+)
+SELECT
+    '01_stg_customer_360',
+    'FULL_LOAD',
+    'SUCCESS',
+    COUNT(*),
+    CURRENT_TIMESTAMP(6),
+    CURRENT_TIMESTAMP(6)
+FROM ETL_STAGING_DB.STG_CUSTOMER_360;
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+.LOGOFF;
+.EXIT 0;
