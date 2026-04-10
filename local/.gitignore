@@ -1,0 +1,5 @@
+.env
+*.duckdb
+*.duckdb.wal
+data/
+__pycache__/

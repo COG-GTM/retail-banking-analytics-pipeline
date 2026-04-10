@@ -138,6 +138,29 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 - **SAS**: SAS 9.4 M7+ with Base SAS, SAS/STAT, SAS/ACCESS Interface to Teradata
 - **Shell**: bash 4+, `envsubst` (from gettext)
 
+## Try It Locally
+
+### Quick Demo (zero install, ~1 second)
+
+```bash
+uv run local/duckdb/run_demo.py
+```
+
+DuckDB natively supports `QUALIFY` and window functions, so the Teradata SQL
+translates with minimal changes. Python + scikit-learn replaces SAS. Generates
+synthetic data, runs the full pipeline, and prints summary reports.
+
+### Real Teradata (ClearScape free cloud sandbox + actual BTEQ)
+
+```bash
+cd local/clearscape
+./setup.sh        # Pull teradata/bteq Docker image, configure credentials
+./load_data.sh    # Generate & load synthetic data via teradatasql
+./run_pipeline.sh # Run actual BTEQ scripts + Python analytics
+```
+
+See [`local/README.md`](local/README.md) for full details on all options.
+
 ## Reference Repositories
 
 This demo was informed by patterns found in these open-source repositories:
