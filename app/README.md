@@ -10,10 +10,12 @@ with the rest of the pipeline (see `export_data.py`).
 
 ## Usage
 
+Run from the **project root** (the package uses relative imports, so it is
+launched as `app.main:app`):
+
 ```
-cd app
-pip install -r requirements.txt
-uvicorn main:app --reload
+pip install -r app/requirements.txt
+uvicorn app.main:app --reload
 # API docs at http://localhost:8000/docs
 ```
 
