@@ -1,0 +1,36 @@
+                                       Customer Risk Scores - Sample (RISK_V4.0)                                        
+
+
+CUSTOMER_ID  COMPOSITE_RISK_SCORE  RISK_TIER  CREDIT_RISK_COMPONENT  BEHAVIOUR_RISK_COMPONENT   PRIMARY_RISK_DRIVER  SECONDARY_RISK_DRIVER
+-----------  --------------------  ---------  ---------------------  ------------------------  --------------------  ---------------------
+          3                  9.12  LOW                14.9090909091                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+          4                 17.49  LOW                27.0909090909                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+          5                 32.65  MODERATE           40.9090909091                         0  TRANSACTION_VELOCITY  CREDIT_UTILIZATION
+          6                  9.09  LOW                18.1818181818                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         11                  9.27  LOW                18.5454545455                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         13                 15.36  LOW                17.2727272727                         0  TRANSACTION_VELOCITY  CREDIT_UTILIZATION
+         15                 13.09  LOW                26.1818181818                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         22                 26.45  MODERATE           41.0909090909                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         26                 12.82  LOW                25.6363636364                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         27                  8.55  LOW                17.0909090909                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         32                 20.45  MODERATE           40.9090909091                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         34                 18.72  LOW                29.8181818182                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         38                 10.18  LOW                20.3636363636                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         40                 10.47  LOW                17.4545454545                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         47                 13.63  LOW                12.7272727273                         0  TRANSACTION_VELOCITY  CREDIT_UTILIZATION
+         48                 16.91  LOW                33.8181818182                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         53                 14.27  LOW                           26                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         57                  7.27  LOW                14.5454545455                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         62                 16.27  LOW                32.5454545455                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+         63                  5.64  LOW                11.2727272727                         0  CREDIT_UTILIZATION    BUREAU_SCORE
+
+... 60 more observations (showing 20 of 80)
+
+                                           Risk Tier Distribution - RISK_V4.0                                           
+
+
+RISK_TIER  COUNT  PERCENT
+---------  -----  -------
+LOW           56       70
+MODERATE      24       30
+

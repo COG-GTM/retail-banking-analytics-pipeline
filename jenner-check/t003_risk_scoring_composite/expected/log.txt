@@ -1,0 +1,40 @@
+Jenner 0.1.0 (Unlicensed - limited to 100 observations)
+Get a license at https://jenneranalytics.com/license
+
+NOTE: Option OBS changed to 100.
+NOTE: DATA RISK_RAW
+
+NOTE: Processing inline DATALINES (80 lines)
+
+NOTE: Read 80 rows from DATALINES.
+NOTE: Wrote RISK_RAW (80 rows, 8 columns).
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+NOTE: DATA RISK_FEATURES
+
+
+NOTE: Read 80 rows from RISK_RAW.
+NOTE: Wrote RISK_FEATURES (80 rows, 12 columns).
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+NOTE: DATA RISK_CLASSIFIED
+
+
+NOTE: Read 80 rows from RISK_FEATURES.
+NOTE: Wrote RISK_CLASSIFIED (80 rows, 14 columns).
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+NOTE: Option TITLE changed to Customer Risk Scores - Sample (RISK_V4.0).
+NOTE: PROC PRINT data=RISK_CLASSIFIED
+
+NOTE: PROC PRINT completed: 20 observations printed, 7 variables
+NOTE: PROC FREQ
+NOTE: Output dataset _TIER_DIST has 2 observations and 3 variables.
+NOTE: PROC FREQ statement used.
+NOTE: Option TITLE changed to Risk Tier Distribution - RISK_V4.0.
+NOTE: PROC PRINT data=_TIER_DIST
+
+NOTE: PROC PRINT completed: 2 observations printed, 3 variables

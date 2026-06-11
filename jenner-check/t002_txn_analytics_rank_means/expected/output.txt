@@ -1,0 +1,44 @@
+                          Transaction Analytics - Spend Percentile & Anomaly Flags (TXN_V2.1)                           
+
+
+CUSTOMER_ID  TOTAL_TRANSACTIONS  TOTAL_DEBIT_AMT  NET_CASH_FLOW  MONTHLY_SPEND_TREND  SPEND_PERCENTILE  ANOMALY_FLAG
+-----------  ------------------  ---------------  -------------  -------------------  ----------------  ------------
+          2                 142        16,922.80      -9,075.14  DOWN                               97  Y
+         10                  76        17,981.24     -15,434.42  DOWN                               98  Y
+         15                  31         2,202.46      -1,812.04  DOWN                               32  N
+         18                  58         5,279.37      -1,350.47  DOWN                               75  N
+         20                  24         1,187.67         940.91  UP                                 17  N
+         22                  17         2,422.32        -319.17  STABLE                             39  N
+         24                  13           845.67         174.48  STABLE                             13  N
+         29                  21         1,825.52      -1,317.93  DOWN                               26  N
+         38                  64         4,552.49      -2,739.06  DOWN                               69  N
+         46                  71         5,048.57       1,286.62  UP                                 73  N
+         55                  38         2,406.63      -1,291.64  DOWN                               36  N
+         61                  16           975.98        -394.23  STABLE                             14  N
+         63                  27         1,956.61      -1,674.87  DOWN                               27  N
+         70                  36         1,997.89        -218.04  STABLE                             29  N
+         74                  78         6,387.34         -94.13  STABLE                             83  N
+         78                  32         4,542.24      -3,782.92  DOWN                               67  N
+        100                  58         4,087.96       1,704.17  UP                                 63  N
+        106                  38         3,059.19      -1,465.18  DOWN                               47  N
+        120                  63         2,233.22         560.09  UP                                 35  N
+        127                  37         1,412.31       3,145.95  UP                                 20  N
+
+... 47 more observations (showing 20 of 67)
+
+                                                    Anomaly Summary                                                     
+
+                                                   The FREQ Procedure
+
+                                          Cumulative    Cumulative
+ANOMALY_FLAG    Frequency    Percent     Frequency      Percent
+---------------------------------------------------------------------
+N                      64     95.52           64        95.52
+Y                       3      4.48           67       100.00
+
+                                                 Cumulative    Cumulative
+MONTHLY_SPEND_TREND    Frequency    Percent     Frequency      Percent
+----------------------------------------------------------------------------
+DOWN                          35     52.24           35        52.24
+STABLE                        18     26.87           53        79.10
+UP                            14     20.90           67       100.00

@@ -1,0 +1,8 @@
+{
+  "bundle": "t003_risk_scoring_composite",
+  "source_file": "sas/03_sas_risk_scoring.sas",
+  "source_blob_sha": "bcd174f8e6d6e57277bb36f273f3a051eb12ffd7",
+  "source_commit": "ef47d56371c6788bed9862dc576f80b08c210db4",
+  "tier": "real_data",
+  "notes": "Risk scoring: feature prep, weighted composite risk score from 5 component scores, risk-tier classification, top-two risk-driver ranking via array scan, PROC FREQ tier distribution. Reads an 80-row sample of the repo's own stg_risk_factors staging CSV (inlined, active customers only). Composite/tier/driver logic unchanged. The upstream PROC LOGISTIC step is omitted: every customer in the staging data has payment_late_cnt=0, so DEFAULT_FLAG is single-class and the model is not fittable on this slice (PROBABILITY_OF_DEFAULT coalesces to 0 exactly as upstream). The array driver-list uses an intermediate INV_BUREAU variable in place of an inline expression element."
+}

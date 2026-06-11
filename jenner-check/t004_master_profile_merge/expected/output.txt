@@ -1,0 +1,39 @@
+                                  Master Profile - Golden Record Sample (MASTER_V1.5)                                   
+
+
+CUSTOMER_ID           FULL_NAME        SEGMENT_NAME  RISK_TIER  MONTHLY_TRANSACTIONS  COMPOSITE_RISK_SCORE  WATCH_LIST_FLAG
+-----------  ------------------  ------------------  ---------  --------------------  --------------------  ---------------
+          2  Angel Johnson       VALUE_BASIC         MODERATE                    142                 28.22  N
+          3  Joshua Long         ENGAGED_MAINSTREAM  LOW                         184                  9.12  N
+          4  Jeffrey Elliott     ENGAGED_MAINSTREAM  LOW                         163                 17.49  N
+          5  Jill Johnson        PREMIUM_WEALTH      MODERATE                    105                 32.65  N
+          6  Erica Day           PREMIUM_WEALTH      LOW                         120                  9.09  N
+          7  Patricia Taylor     CREDIT_DEPENDENT    MODERATE                     28                 21.27  N
+          8  Christopher Murray  PREMIUM_WEALTH      LOW                          30                  9.73  N
+          9  Robert Williams     CREDIT_DEPENDENT    LOW                         148                  5.55  N
+         10  Anthony Gray        CREDIT_DEPENDENT    LOW                         103                  3.73  N
+         11  Jeffery Lewis       ENGAGED_MAINSTREAM  LOW                          54                  9.27  N
+         12  William Murphy      GROWING_DIGITAL     LOW                          60                 19.84  N
+         13  Anthony Juarez      ENGAGED_MAINSTREAM  LOW                         130                 15.36  N
+         15  Debra Walton        ENGAGED_MAINSTREAM  LOW                         226                 13.09  N
+         16  Amy Decker          VALUE_BASIC         LOW                          55                  7.91  N
+         17  Jeffrey King        CREDIT_DEPENDENT    LOW                          18                 17.36  N
+
+... 25 more observations (showing 15 of 40)
+
+      SEGMENT_NAME  N  AVG_LTV
+------------------  -  -------
+ENGAGED_MAINSTREAM  8  16237.1
+    PREMIUM_WEALTH  8  4613.04
+  CREDIT_DEPENDENT  8  3638.75
+      UNCLASSIFIED  8      0.0
+       VALUE_BASIC  6   4012.3
+   GROWING_DIGITAL  2  9706.25
+RISK_TIER   N  AVG_SCORE
+---------  --  ---------
+  UNKNOWN   6           
+ MODERATE   7      27.04
+      LOW  27      11.36
+TOTAL  HAS_SEGMENT  HAS_TXN  HAS_RISK_SCORE  CROSS_SELL_ELIGIBLE  UPSELL_ELIGIBLE  RETENTION_AT_RISK  ON_WATCH_LIST
+-----  -----------  -------  --------------  -------------------  ---------------  -----------------  -------------
+   40           32       30              34                    5               12                  1              0

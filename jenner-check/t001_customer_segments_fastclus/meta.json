@@ -1,0 +1,8 @@
+{
+  "bundle": "t001_customer_segments_fastclus",
+  "source_file": "sas/01_sas_customer_segments.sas",
+  "source_blob_sha": "2aadd6bd9ea3b1c4f9b02addfd3b3fdc92aaab89",
+  "source_commit": "ef47d56371c6788bed9862dc576f80b08c210db4",
+  "tier": "real_data",
+  "notes": "Customer segmentation k-means: PROC STDIZE + PROC FASTCLUS (k=5) + SQL cluster profiling. Reads a 60-row sample of the repo's own stg_customer_360 staging CSV (inlined as DATALINES). Two-level WORK.member dataset names rewritten to single-level (resolve to WORK) so the chained PROCs run; analytics, options, and feature engineering unchanged. Teradata extract + pass-through load omitted."
+}
