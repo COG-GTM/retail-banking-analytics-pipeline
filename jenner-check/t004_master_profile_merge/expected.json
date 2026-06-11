@@ -1,0 +1,18 @@
+{
+  "_captured_at": "2026-06-11T18:18:40.205117+00:00",
+  "_captured_run_id": "r_019eb7e820a278029c94ee01eff52366",
+  "status": "ok",
+  "exit_code": 0,
+  "log_contains": [
+    "NOTE: Wrote MASTER_PROFILE (40 rows",
+    "NOTE: PROC SQL statement used."
+  ],
+  "log_does_not_contain": [
+    "ERROR:",
+    "[JENNER-ERROR"
+  ],
+  "diagnostics": {
+    "parse_warnings": [],
+    "runtime_warnings": []
+  }
+}

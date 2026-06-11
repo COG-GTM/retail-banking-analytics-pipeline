@@ -1,0 +1,8 @@
+{
+  "bundle": "t002_txn_analytics_rank_means",
+  "source_file": "sas/02_sas_txn_analytics.sas",
+  "source_blob_sha": "5c05dff24d09ecc9a66aba41fc57cdf80c34e2ad",
+  "source_commit": "ef47d56371c6788bed9862dc576f80b08c210db4",
+  "tier": "real_data",
+  "notes": "Transaction analytics: PROC SQL customer-level aggregation, PROC RANK (groups=100 percentiles), PROC MEANS IQR anomaly detection, PROC FREQ summary. Reads a 70-row sample of the repo's own stg_txn_summary staging CSV (inlined as DATALINES). Aggregation/ranking/IQR logic unchanged; Teradata extract + pass-through load omitted."
+}

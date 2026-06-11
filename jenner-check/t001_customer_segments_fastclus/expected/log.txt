@@ -1,0 +1,52 @@
+Jenner 0.1.0 (Unlicensed - limited to 100 observations)
+Get a license at https://jenneranalytics.com/license
+
+NOTE: Option OBS changed to 100.
+NOTE: DATA STG_CUSTOMER_360
+
+NOTE: Processing inline DATALINES (60 lines)
+
+NOTE: Read 60 rows from DATALINES.
+NOTE: Wrote STG_CUSTOMER_360 (60 rows, 15 columns).
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+NOTE: PROC SQL 
+
+NOTE: Table CUST_360 created.
+NOTE: PROC SQL statement used.
+NOTE: DATA CUST_FEATURES
+
+
+NOTE: Read 54 rows from CUST_360.
+NOTE: Wrote CUST_FEATURES (54 rows, 21 columns).
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+NOTE: PROC STDIZE data=CUST_FEATURES
+
+NOTE: PROC STDIZE: Wrote 54 rows to CUST_STANDARDISED
+NOTE: PROC FASTCLUS data=CUST_STANDARDISED maxclusters=5
+
+NOTE: Using Python/scikit-learn for k-means clustering
+NOTE: PROC FASTCLUS: 54 observations, 6 variables, 5 clusters using k-means
+NOTE: PROC SQL 
+
+NOTE: Table CLUSTER_PROFILES created.
+NOTE: PROC SQL statement used.
+NOTE: DATA SEGMENT_LABELS
+
+
+NOTE: Read 5 rows from CLUSTER_PROFILES.
+NOTE: Wrote SEGMENT_LABELS (5 rows, 2 columns).
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+NOTE: Option TITLE changed to Customer Segment Profiles - SEG_V3.2.
+NOTE: PROC PRINT data=CLUSTER_PROFILES
+
+NOTE: PROC PRINT completed: 5 observations printed, 6 variables
+NOTE: Option TITLE changed to Segment Labels by Cluster.
+NOTE: PROC PRINT data=SEGMENT_LABELS
+
+NOTE: PROC PRINT completed: 5 observations printed, 2 variables

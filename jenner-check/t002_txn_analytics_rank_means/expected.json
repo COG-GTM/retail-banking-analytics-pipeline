@@ -1,0 +1,19 @@
+{
+  "_captured_at": "2026-06-11T18:14:20.017408+00:00",
+  "_captured_run_id": "r_019eb7e4070b7c11aeb0b6f1426477e3",
+  "status": "ok",
+  "exit_code": 0,
+  "log_contains": [
+    "NOTE: Table CUST_TXN created.",
+    "NOTE: PROC MEANS statement used.",
+    "NOTE: Wrote TXN_ANALYTICS_FINAL (67 rows, 18 columns)."
+  ],
+  "log_does_not_contain": [
+    "ERROR:",
+    "[JENNER-ERROR"
+  ],
+  "diagnostics": {
+    "parse_warnings": [],
+    "runtime_warnings": []
+  }
+}

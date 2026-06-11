@@ -1,0 +1,61 @@
+
+                                                 The FASTCLUS Procedure                                                 
+                                   Replace=FULL  Radius=0  Maxclusters=5  Maxiter=50                                    
+
+                                                    Cluster Summary                                                     
+
+Cluster     Frequency        RMS Std   Maximum Distance        Nearest       Centroid
+                           Deviation          from Seed        Cluster       Distance
+--------------------------------------------------------------------------------
+1                  15         0.7735             2.4288              2         2.2621
+2                  13         0.8430             4.2272              3         2.2140
+3                  13         0.6554             2.6297              2         2.2140
+4                   6         0.4823             1.3279              3         2.4499
+5                   7         0.7419             2.5283              3         2.6317
+
+                                                Statistics for Variables                                                
+
+Variable        Total STD   Within STD    R-Squared  RSQ/(1-RSQ)
+------------------------------------------------------------
+LOG_BALANCE        1.0000       0.7620       0.4193       0.7221
+TENURE_MONTHS       1.0000       0.6746       0.5450       1.1977
+CREDIT_UTILIZATION_PCT       1.0000       0.6783       0.5399       1.1737
+PRODUCT_BREADTH       1.0000       0.6157       0.6210       1.6382
+ACCT_RATIO         1.0000       0.9164       0.1602       0.1908
+AGE                1.0000       0.7301       0.4669       0.8759
+
+Overall R-Squared: 0.499578
+Pseudo F Statistic: 12.2293
+
+                                                     Cluster Means                                                      
+
+Cluster       LOG_BALANCE  TENURE_MONTHS CREDIT_UTILIZATION_PCT PRODUCT_BREADTH     ACCT_RATIO            AGE
+----------------------------------------------------------------------------------------------------
+1                  0.1447        -0.9781         1.0024         0.6614        -0.2679        -0.1329
+2                  0.1874         1.0918         0.2845         0.7603        -0.6176         0.2952
+3                  0.0667        -0.0464        -0.5507        -0.4885         0.3679         0.8982
+4                  0.9652        -0.1745        -0.9753        -0.4885         0.5587        -1.3293
+5                 -1.6093         0.3041        -0.8178        -1.5032         0.5587        -0.7920
+
+                                          Customer Segment Profiles - SEG_V3.2                                          
+
+
+CLUSTER   N    AVG_BALANCE     AVG_TENURE    AVG_BREADTH  AVG_CREDIT_UTIL
+-------  --  -------------  -------------  -------------  ---------------
+      4   6   0.9652325167  -0.1744867418  -0.4885308623    -0.9753256668
+      2  13   0.1873545766   1.0917721632   0.7602580875     0.2845429057
+      1  15   0.1447092749  -0.9780979674    0.661395629     1.0024391989
+      3  13   0.0667205885  -0.0464261475  -0.4885308623    -0.5507208977
+      5   7  -1.6092873387   0.3041273939   -1.503171884    -0.8177600124
+
+                                               Segment Labels by Cluster                                                
+
+
+CLUSTER        SEGMENT_NAME
+-------  ------------------
+      4  PREMIUM_WEALTH
+      2  ENGAGED_MAINSTREAM
+      1  GROWING_DIGITAL
+      3  CREDIT_DEPENDENT
+      5  VALUE_BASIC
+

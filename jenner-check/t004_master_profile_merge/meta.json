@@ -1,0 +1,8 @@
+{
+  "bundle": "t004_master_profile_merge",
+  "source_file": "sas/04_sas_data_products.sas",
+  "source_blob_sha": "cabcb11bdbe806585a9985033e0957bdc20b75b2",
+  "source_commit": "ef47d56371c6788bed9862dc576f80b08c210db4",
+  "tier": "real_data",
+  "notes": "Golden-record assembly: PROC SORT x4, a 4-way DATA-step MERGE with IN= variables and missing-field defaulting, then PROC SQL segment + risk-tier distributions and a completeness check. Inputs are samples of the repo's own data-product CSVs (BASE 40, SEGMENTS 32, TXN 30, RISK 34) so the IN= default branches fire for the customers missing from each product. Merge/sort/completeness logic unchanged; Teradata extract + pass-through load omitted."
+}

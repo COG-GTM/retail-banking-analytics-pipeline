@@ -1,0 +1,19 @@
+{
+  "_captured_at": "2026-06-11T18:10:03.110794+00:00",
+  "_captured_run_id": "r_019eb7dfb2207ec3bd5c1b47d053eda4",
+  "status": "ok",
+  "exit_code": 0,
+  "log_contains": [
+    "NOTE: PROC FASTCLUS: 54 observations, 6 variables, 5 clusters using k-means",
+    "NOTE: PROC STDIZE: Wrote 54 rows to CUST_STANDARDISED",
+    "NOTE: Table CLUSTER_PROFILES created."
+  ],
+  "log_does_not_contain": [
+    "ERROR:",
+    "[JENNER-ERROR"
+  ],
+  "diagnostics": {
+    "parse_warnings": [],
+    "runtime_warnings": []
+  }
+}

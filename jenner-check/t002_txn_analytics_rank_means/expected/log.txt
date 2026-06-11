@@ -1,0 +1,53 @@
+Jenner 0.1.0 (Unlicensed - limited to 100 observations)
+Get a license at https://jenneranalytics.com/license
+
+NOTE: Option OBS changed to 100.
+NOTE: DATA STG_TXN_SUMMARY
+
+NOTE: Processing inline DATALINES (70 lines)
+
+NOTE: Read 70 rows from DATALINES.
+NOTE: Wrote STG_TXN_SUMMARY (70 rows, 10 columns).
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+NOTE: PROC SQL 
+
+NOTE: Table CUST_TXN created.
+NOTE: PROC SQL statement used.
+NOTE: DATA CUST_TXN_TREND
+
+
+NOTE: Read 67 rows from CUST_TXN.
+NOTE: Wrote CUST_TXN_TREND (67 rows, 16 columns).
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+NOTE: PROC RANK data=CUST_TXN_TREND out=Some("CUST_TXN_RANKED") groups=100
+
+
+NOTE: Read 67 rows from /tmp/work/work/cf2b7cc7-be85-4c62-aaee-3c10c8deec11/cust_txn_trend.avro.
+NOTE: Wrote /tmp/work/work/cf2b7cc7-be85-4c62-aaee-3c10c8deec11/cust_txn_ranked.avro (67 rows, 17 columns).
+NOTE: PROC RANK elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+NOTE: PROC MEANS
+NOTE: Output dataset _TXN_STATS has 1 observations and 4 variables.
+NOTE: PROC MEANS statement used.
+NOTE: DATA TXN_ANALYTICS_FINAL
+
+
+NOTE: Read 67 rows from CUST_TXN_RANKED.
+NOTE: Wrote TXN_ANALYTICS_FINAL (67 rows, 18 columns).
+NOTE: DATA elapsed:
+  wall  0.00 seconds
+  cpu   0.00 seconds
+NOTE: Option TITLE changed to Transaction Analytics - Spend Percentile & Anomaly Flags (TXN_V2.1).
+NOTE: PROC PRINT data=TXN_ANALYTICS_FINAL
+
+NOTE: PROC PRINT completed: 20 observations printed, 7 variables
+NOTE: Option TITLE changed to Anomaly Summary.
+NOTE: PROC FREQ
+NOTE: ODS plot written: freq_anomaly_flag.spec.json
+NOTE: ODS plot written: freq_monthly_spend_trend.spec.json
+NOTE: PROC FREQ statement used.
