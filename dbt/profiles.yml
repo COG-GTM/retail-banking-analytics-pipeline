@@ -1,0 +1,24 @@
+# =============================================================================
+# dbt connection profile - Retail Banking Analytics (dbt-teradata)
+# =============================================================================
+# This is a template. Credentials are read from environment variables that map
+# to the same names used by config/pipeline_config.cfg. Run dbt from the repo
+# root with:
+#
+#   dbt <command> --project-dir dbt --profiles-dir dbt
+#
+# Set TD_PASSWORD (not stored in the repo) before running against a live
+# Teradata system. No secret values are committed here.
+# =============================================================================
+retail_banking_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: teradata
+      host: "{{ env_var('TD_SERVER', 'tdprod.corp.bankdemo.com') }}"
+      user: "{{ env_var('TD_USERNAME', 'svc_etl_pipeline') }}"
+      password: "{{ env_var('TD_PASSWORD', '') }}"
+      logmech: "{{ env_var('TD_LOGMECH', 'LDAP') }}"
+      schema: "{{ env_var('TD_DATABASE', 'DATA_PRODUCTS_DB') }}"
+      tmode: ANSI
+      threads: 4

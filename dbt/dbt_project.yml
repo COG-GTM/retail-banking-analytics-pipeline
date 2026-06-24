@@ -1,0 +1,63 @@
+name: 'retail_banking_analytics'
+version: '1.0.0'
+config-version: 2
+
+# Connection profile (see profiles.yml in this directory).
+profile: 'retail_banking_analytics'
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# -----------------------------------------------------------------------------
+# Database / schema mapping (mirrors config/pipeline_config.cfg).
+# In the Teradata adapter a dbt "schema" maps 1:1 to a Teradata database, so
+# these vars are used both for source databases and for model materialization
+# targets. Override per-environment with --vars or environment-specific configs.
+# -----------------------------------------------------------------------------
+vars:
+  db_core: CORE_BANKING_DB      # DB_CORE  - operational customer/account data
+  db_txn: TXN_PROCESSING_DB     # DB_TXN   - transaction processing tables
+  db_stg: ETL_STAGING_DB        # DB_STG   - BTEQ staging / intermediate tables
+  db_dp: DATA_PRODUCTS_DB       # DB_DP    - final certified data products
+  lookback_months: 12           # LOOKBACK_MONTHS
+
+# NOTE: model/seed +schema values below must match the db_stg / db_dp vars above
+# (var() cannot be rendered inside dbt_project.yml configs, so the literal
+# Teradata database names from config/pipeline_config.cfg are used directly).
+models:
+  retail_banking_analytics:
+    staging:
+      +materialized: view
+      +schema: ETL_STAGING_DB
+    intermediate:
+      # Work tables (former BTEQ WRK_* tables) are ephemeral CTEs.
+      +materialized: ephemeral
+      +schema: ETL_STAGING_DB
+      # Feature-engineering output that the external ML step consumes is a view.
+      int_customer_segment_features:
+        +materialized: view
+    marts:
+      +materialized: table
+      +schema: DATA_PRODUCTS_DB
+
+seeds:
+  retail_banking_analytics:
+    # Seeds stand in for the external ML model outputs; they live alongside the
+    # other certified data products.
+    +schema: DATA_PRODUCTS_DB
+    customer_segments:
+      +column_types:
+        customer_id: bigint
+        segment_id: smallint
+        subsegment_id: smallint
+    customer_risk_scores:
+      +column_types:
+        customer_id: bigint

@@ -1,0 +1,54 @@
+version: 2
+
+models:
+  - name: int_wrk_daily_balance
+    description: >
+      Ephemeral work model: last end-of-day running balance per account per day
+      over the last 3 months. dbt port of the BTEQ WRK_DAILY_BALANCE work table.
+      Inlined as a CTE where referenced (no physical relation).
+    columns:
+      - name: customer_id
+      - name: account_id
+      - name: transaction_date
+      - name: eod_balance
+
+  - name: int_wrk_payment_history
+    description: >
+      Ephemeral work model: per-account payment counts and on-time/late behaviour
+      on credit and loan accounts. dbt port of the BTEQ WRK_PAYMENT_HISTORY work
+      table. Inlined as a CTE where referenced.
+    columns:
+      - name: customer_id
+      - name: account_id
+      - name: total_payments
+      - name: ontime_payments
+      - name: late_payments
+      - name: months_since_last_late
+
+  - name: int_customer_segment_features
+    description: >
+      SQL-only feature engineering for customer segmentation (sas/01 STEP 1-2):
+      product breadth, tenure/age/balance tiering, log balance and account ratio.
+      This view is the INPUT to the external k-means ML step that produces the
+      customer_segments data product (the math is NOT done in dbt).
+    columns:
+      - name: customer_id
+        description: Unique customer identifier (active customers only).
+        data_tests: [not_null, unique]
+      - name: product_breadth
+        description: Proportion of the 4 product types held (0-1).
+      - name: tenure_group
+        data_tests:
+          - accepted_values:
+              values: ['NEW (<1yr)', 'DEVELOPING (1-3yr)', 'ESTABLISHED (3-7yr)', 'LOYAL (7yr+)']
+      - name: age_group
+        data_tests:
+          - accepted_values:
+              values: ['GEN_Z', 'MILLENNIAL', 'GEN_X', 'BOOMER', 'SILENT']
+      - name: balance_tier
+        data_tests:
+          - accepted_values:
+              values: ['LOW', 'MODERATE', 'AFFLUENT', 'HIGH_NET_WORTH']
+      - name: log_balance
+      - name: acct_ratio
+      - name: digital_adoption_score
