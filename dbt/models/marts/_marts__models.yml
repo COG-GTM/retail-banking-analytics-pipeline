@@ -1,0 +1,89 @@
+version: 2
+
+models:
+  - name: transaction_analytics
+    description: >
+      TRANSACTION_ANALYTICS data product: per-customer spend trends, percentiles
+      and anomaly flags. dbt port of sas/02_sas_txn_analytics.sas (PROC RANK and
+      PROC MEANS IQR re-expressed as SQL window/percentile functions).
+      Materializes to DATA_PRODUCTS_DB.TRANSACTION_ANALYTICS.
+    columns:
+      - name: customer_id
+        description: Unique customer identifier.
+        data_tests: [not_null, unique]
+      - name: reporting_period
+        description: YYYY-MM reporting period.
+      - name: total_accounts
+      - name: active_accounts
+      - name: total_transactions
+      - name: total_debit_amt
+      - name: total_credit_amt
+      - name: net_cash_flow
+      - name: avg_transaction_size
+      - name: monthly_spend_trend
+        description: UP, DOWN, STABLE.
+        data_tests:
+          - accepted_values:
+              values: ['UP', 'DOWN', 'STABLE']
+      - name: spend_percentile
+      - name: top_spend_category
+      - name: digital_txn_pct
+      - name: fee_income
+      - name: interest_income
+      - name: revenue_contribution
+      - name: anomaly_flag
+        data_tests:
+          - accepted_values:
+              values: ['Y', 'N']
+      - name: model_version
+      - name: effective_date
+
+  - name: customer_master_profile
+    description: >
+      CUSTOMER_MASTER_PROFILE golden record joining base customer attributes with
+      the segments, transaction analytics and risk-score products. dbt port of
+      sas/04_sas_data_products.sas (4-way DATA-step MERGE -> LEFT JOIN with
+      COALESCE defaults). Materializes to DATA_PRODUCTS_DB.CUSTOMER_MASTER_PROFILE.
+    columns:
+      - name: customer_id
+        description: Unique customer identifier.
+        data_tests: [not_null, unique]
+      - name: full_name
+        data_tests: [not_null]
+      - name: age
+      - name: state_code
+      - name: customer_since
+      - name: tenure_months
+      - name: customer_status
+        data_tests: [not_null]
+      - name: segment_name
+        description: Behavioural segment name, or UNCLASSIFIED when unmatched.
+      - name: lifetime_value_score
+      - name: engagement_score
+      - name: total_accounts
+      - name: active_accounts
+      - name: total_balance
+      - name: total_credit_limit
+      - name: credit_utilization_pct
+      - name: monthly_transactions
+      - name: monthly_spend
+      - name: net_cash_flow
+      - name: top_spend_category
+      - name: digital_txn_pct
+      - name: composite_risk_score
+      - name: risk_tier
+        description: LOW, MODERATE, ELEVATED, HIGH, CRITICAL, or UNKNOWN when unmatched.
+        data_tests:
+          - accepted_values:
+              values: ['LOW', 'MODERATE', 'ELEVATED', 'HIGH', 'CRITICAL', 'UNKNOWN']
+      - name: probability_of_default
+      - name: watch_list_flag
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]
+      - name: cross_sell_flag
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]
+      - name: upsell_flag
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]
+      - name: retention_risk_flag
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]
+      - name: model_version
+      - name: effective_date

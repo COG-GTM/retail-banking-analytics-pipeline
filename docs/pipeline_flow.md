@@ -148,3 +148,46 @@ Timeline:
 - **02:20** SAS Phase starts (~40 min)
 - **03:00** Post-validation and log archival
 - **03:05** Data products available to consumers
+
+## dbt Re-Implementation
+
+The `dbt/` project re-expresses the BTEQ + SQL-based SAS logic as a single dbt
+DAG on Teradata (`dbt-teradata`). It does not replace the BTEQ/SAS scripts; it
+sits alongside them for validation. Full details are in `dbt/README.md`.
+
+### Layering
+
+```
+   SOURCES                 STAGING (views)            INTERMEDIATE                MARTS (tables)
+   ===============         =====================      =========================   ==========================
+   core_banking.*    ┌──▶  stg_customer_360   ──┬──▶  int_customer_segment_       (external k-means)
+   (customers,       │                          │     features (view) ───────────────▶ seed: customer_segments ─┐
+    accounts,        │                          │                                                                │
+    addresses,       │                          └────────────────────────────────────────────────────────────  ├─▶ customer_master_profile
+    bureau_scores)   │     stg_txn_summary    ──────▶  transaction_analytics ─────────────────────────────────  │
+                     │                                                                                            │
+   txn_processing.*  ┘     stg_risk_factors   ◀── int_wrk_daily_balance (ephemeral)                              │
+   (transactions,                              ◀── int_wrk_payment_history (ephemeral)                           │
+    transaction_types)            │                                                                              │
+                                  └──────────▶ (external logistic regression) ─▶ seed: customer_risk_scores ─────┘
+```
+
+### Why two steps stay external
+
+`PROC FASTCLUS` (k-means) and `PROC LOGISTIC` (probability of default) require
+model fitting that cannot be expressed in dbt SQL. Their outputs are loaded as
+dbt seeds (from `data/03_sas_data_products/`) so `customer_master_profile` can
+still join them; the feature engineering that feeds segmentation is implemented
+as the `int_customer_segment_features` model. Percentile ranking (`PROC RANK`)
+and IQR anomaly detection (`PROC MEANS`) in `transaction_analytics` are
+re-expressed in SQL (`ntile`, `percentile_cont`) and stay inside dbt.
+
+### Materialization & schema mapping
+
+| Layer | Materialization | Teradata DB (from `config/pipeline_config.cfg`) |
+|-------|-----------------|--------------------------------------------------|
+| staging | view | `ETL_STAGING_DB` (`DB_STG`) |
+| intermediate work tables | ephemeral | inlined |
+| segmentation features | view | `ETL_STAGING_DB` (`DB_STG`) |
+| marts | table | `DATA_PRODUCTS_DB` (`DB_DP`) |
+| seeds (ML outputs) | seed | `DATA_PRODUCTS_DB` (`DB_DP`) |

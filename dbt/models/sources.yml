@@ -1,0 +1,125 @@
+version: 2
+
+sources:
+  - name: core_banking
+    description: >
+      Operational customer, account and address tables owned by the core banking
+      platform team. Maps to the CORE_BANKING_DB Teradata database
+      (config DB_CORE). Documented in ddl/00_source_tables.sql.
+    schema: "{{ var('db_core') }}"
+    tables:
+      - name: customers
+        identifier: CUSTOMERS
+        description: Master customer record from the core banking platform.
+        columns:
+          - name: customer_id
+            description: Unique customer identifier.
+            data_tests: [not_null, unique]
+          - name: customer_status
+            description: A=Active, I=Inactive, C=Closed.
+            data_tests:
+              - accepted_values:
+                  values: ['A', 'I', 'C']
+          - name: segment_code
+            description: Service-tier segment code (e.g. PREMIER, DIGITAL).
+          - name: date_of_birth
+          - name: customer_since
+
+      - name: accounts
+        identifier: ACCOUNTS
+        description: Account-level detail (checking, savings, credit, loan).
+        columns:
+          - name: account_id
+            description: Unique account identifier.
+            data_tests: [not_null, unique]
+          - name: customer_id
+            description: Owning customer.
+            data_tests: [not_null]
+          - name: account_type
+            description: CHECKING, SAVINGS, CREDIT, LOAN.
+            data_tests:
+              - accepted_values:
+                  values: ['CHECKING', 'SAVINGS', 'CREDIT', 'LOAN']
+          - name: account_status
+            description: O=Open, C=Closed, F=Frozen.
+            data_tests:
+              - accepted_values:
+                  values: ['O', 'C', 'F']
+          - name: current_balance
+          - name: available_balance
+          - name: credit_limit
+
+      - name: addresses
+        identifier: ADDRESSES
+        description: Customer mailing and residential addresses (SCD Type 2 via effective/expiration dates).
+        columns:
+          - name: address_id
+            description: Unique address identifier.
+            data_tests: [not_null, unique]
+          - name: customer_id
+            data_tests: [not_null]
+          - name: address_type
+            description: MAIL, HOME, WORK.
+          - name: effective_date
+          - name: expiration_date
+
+      # NOTE: customer_bureau_scores is read from CORE_BANKING_DB by
+      # bteq/03_stg_risk_factors.bteq (CORE_BANKING_DB.CUSTOMER_BUREAU_SCORES),
+      # so it is declared here under core_banking to preserve current behaviour.
+      # It is not present in ddl/00_source_tables.sql; columns are taken from
+      # data/01_source_tables/customer_bureau_scores.csv.
+      - name: customer_bureau_scores
+        identifier: CUSTOMER_BUREAU_SCORES
+        description: External credit bureau scores per customer, point-in-time by report date.
+        columns:
+          - name: customer_id
+            data_tests: [not_null]
+          - name: external_credit_score
+            description: Raw bureau score (300-850 scale).
+          - name: report_date
+            description: Date the bureau score was pulled.
+
+  - name: txn_processing
+    description: >
+      Transaction processing tables. Maps to the TXN_PROCESSING_DB Teradata
+      database (config DB_TXN). Documented in ddl/00_source_tables.sql.
+    schema: "{{ var('db_txn') }}"
+    tables:
+      - name: transactions
+        identifier: TRANSACTIONS
+        description: Individual financial transactions across all account types.
+        columns:
+          - name: transaction_id
+            description: Unique transaction identifier.
+            data_tests: [not_null, unique]
+          - name: account_id
+            data_tests: [not_null]
+          - name: transaction_type_cd
+            description: FK to transaction_types.
+          - name: transaction_date
+          - name: amount
+          - name: running_balance
+          - name: merchant_name
+          - name: merchant_category
+          - name: channel_code
+            description: ATM, POS, WEB, MOB, ACH, WIRE, INTL.
+          - name: status_code
+            description: P=Posted, R=Reversed, H=Hold.
+            data_tests:
+              - accepted_values:
+                  values: ['P', 'R', 'H']
+
+      - name: transaction_types
+        identifier: TRANSACTION_TYPES
+        description: Reference/lookup table for transaction type codes.
+        columns:
+          - name: transaction_type_cd
+            description: Unique transaction type code.
+            data_tests: [not_null, unique]
+          - name: category
+            description: DEBIT, CREDIT, FEE, INTEREST.
+            data_tests:
+              - accepted_values:
+                  values: ['DEBIT', 'CREDIT', 'FEE', 'INTEREST']
+          - name: description
+          - name: is_revenue

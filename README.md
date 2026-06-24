@@ -115,6 +115,27 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 | **CUSTOMER_RISK_SCORES** | Composite risk scores with probability of default | Credit, Collections |
 | **CUSTOMER_MASTER_PROFILE** | Golden record joining all products | Enterprise-wide |
 
+## dbt Project (unified re-implementation)
+
+A dbt project under [`dbt/`](dbt/) re-implements this pipeline as a single,
+testable dbt schema targeting Teradata (`dbt-teradata`). It is added **alongside**
+the existing `bteq/` and `sas/` directories (which are unchanged) so the
+migration can be validated against current outputs.
+
+- **Phase 1 BTEQ staging** → dbt **staging** models (`dbt/models/staging/`),
+  with the two BTEQ work tables as **ephemeral** intermediate models.
+- **SQL-based SAS data products** (`02_sas_txn_analytics`, `04_sas_data_products`)
+  → dbt **mart** models (`dbt/models/marts/`).
+- **Statistical/ML steps remain outside dbt**: customer segmentation (k-means,
+  `sas/01`) and risk scoring (logistic regression, `sas/03`) are **not**
+  reproduced in SQL. Their outputs are modelled as dbt **seeds** so the golden
+  record can still join them, and the SQL-only feature engineering for
+  segmentation is exposed as the `int_customer_segment_features` model for the
+  external ML step to consume.
+
+See [`dbt/README.md`](dbt/README.md) for the full mapping, lineage, dialect
+notes, and run instructions.
+
 ## Running the Pipeline
 
 ```bash
