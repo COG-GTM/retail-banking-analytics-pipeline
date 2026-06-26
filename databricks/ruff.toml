@@ -1,0 +1,10 @@
+# Ruff configuration scoped to the Databricks migration.
+#
+# These files are Databricks notebooks (source format). The Spark session
+# (`spark`), `dbutils`, `display`, and the helpers / config values brought in
+# via `%run` are injected into the notebook namespace at runtime, so static
+# "undefined name" (F821) checks do not apply.
+line-length = 100
+
+[lint]
+ignore = ["F821"]
