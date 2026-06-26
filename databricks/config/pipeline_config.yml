@@ -1,0 +1,44 @@
+# =============================================================================
+# Pipeline Configuration - Retail Banking Customer Analytics (Databricks)
+# =============================================================================
+# Databricks replacement for config/pipeline_config.cfg.
+#
+# The Teradata connection settings (TD_SERVER / TD_USERNAME / TD_LOGMECH), the
+# four database references (DB_CORE / DB_TXN / DB_STG / DB_DP) and the SAS_HOME /
+# BTEQ_DIR / SAS_DIR paths are gone: data lives in Delta under Unity Catalog and
+# there is no LIBNAME / JDBC connection or SAS install to configure.
+#
+# These values are surfaced to the notebooks via the Asset Bundle job parameters
+# (see databricks.yml + resources/retail_banking_analytics.job.yml) and read at
+# runtime by config/pipeline_config.py. This file is the human-readable record.
+# =============================================================================
+
+# -- Unity Catalog -------------------------------------------------------------
+catalog: retail_banking
+
+# Schema mapping (was four Teradata databases)
+schemas:
+  core_banking: core_banking        # was CORE_BANKING_DB
+  txn_processing: txn_processing    # was TXN_PROCESSING_DB
+  etl_staging: etl_staging          # was ETL_STAGING_DB
+  data_products: data_products      # was DATA_PRODUCTS_DB
+
+# -- Run parameters ------------------------------------------------------------
+lookback_months: 12
+risk_score_threshold: 700
+
+# -- Run-control flags (replace --skip-bteq / --skip-sas / --dry-run) ---------
+skip_bteq: false
+skip_sas: false
+dry_run: false
+
+# -- Audit ---------------------------------------------------------------------
+# ETL audit trail (replaces Teradata ETL_RUN_LOG + SAS WORK.PIPELINE_AUDIT)
+audit_table: retail_banking.etl_staging.etl_run_log
+
+# -- Model versions ------------------------------------------------------------
+model_versions:
+  customer_segments: SEG_V3.2
+  transaction_analytics: TXN_V2.1
+  customer_risk_scores: RISK_V4.0
+  customer_master_profile: MASTER_V1.5

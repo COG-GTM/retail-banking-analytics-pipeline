@@ -1,0 +1,46 @@
+# =============================================================================
+# Databricks Asset Bundle - Retail Banking Customer Analytics Pipeline
+# =============================================================================
+# Replaces the shell orchestrators (orchestration/run_full_pipeline.sh,
+# bteq/run_bteq_pipeline.sh, sas/run_sas_pipeline.sh) with a declarative
+# Databricks Workflow (Jobs) definition.
+#
+# Deploy:  databricks bundle deploy -t dev
+# Run:     databricks bundle run retail_banking_analytics -t dev
+# =============================================================================
+
+bundle:
+  name: retail_banking_analytics
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog name that holds all schemas and tables.
+    default: retail_banking
+  lookback_months:
+    description: Transaction lookback window in months (STG_TXN_SUMMARY).
+    default: "12"
+  risk_score_threshold:
+    description: Bureau risk-score threshold carried over from pipeline_config.cfg.
+    default: "700"
+  sample_data_path:
+    description: Optional UC Volume folder with source CSVs to load on setup.
+    default: ""
+  node_type_id:
+    description: Worker/driver node type for the job cluster.
+    default: i3.xlarge
+
+targets:
+  dev:
+    mode: development
+    default: true
+    # workspace:
+    #   host: https://<your-workspace>.cloud.databricks.com
+
+  prod:
+    mode: production
+    # workspace:
+    #   host: https://<your-workspace>.cloud.databricks.com
+    #   root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}

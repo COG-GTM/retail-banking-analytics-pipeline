@@ -1,0 +1,115 @@
+# =============================================================================
+# Retail Banking Analytics - Databricks Workflow (Job) definition
+# =============================================================================
+# Task DAG (replaces the BTEQ -> SAS shell pipeline). Fail-fast is implicit:
+# a task only runs once all of its depends_on tasks succeed, so the analytics
+# layer never runs if staging fails, and post-run validation never runs unless
+# the master profile is built.
+#
+#   setup
+#     |-- stg_customer_360 --+--> customer_segments --+
+#     |-- stg_txn_summary  --+--> txn_analytics      --+--> data_products --> post_run_validation
+#     |-- stg_risk_factors --+--> risk_scoring       --+
+#
+# The --skip-bteq / --skip-sas / --dry-run flags map to the job parameters
+# skip_bteq / skip_sas / dry_run, honoured by guard() in pipeline_utils.
+# =============================================================================
+
+resources:
+  jobs:
+    retail_banking_analytics:
+      name: retail_banking_analytics
+      tags:
+        pipeline: retail-banking
+        migrated_from: teradata-bteq-sas
+
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: lookback_months
+          default: ${var.lookback_months}
+        - name: risk_score_threshold
+          default: ${var.risk_score_threshold}
+        - name: sample_data_path
+          default: ${var.sample_data_path}
+        - name: skip_bteq
+          default: "false"
+        - name: skip_sas
+          default: "false"
+        - name: dry_run
+          default: "false"
+        - name: min_rows
+          default: "1"
+
+      job_clusters:
+        - job_cluster_key: analytics_cluster
+          new_cluster:
+            # ML runtime ships numpy / pandas / scikit-learn used by the
+            # segmentation and risk-scoring notebooks.
+            spark_version: 15.4.x-cpu-ml-scala2.12
+            node_type_id: ${var.node_type_id}
+            data_security_mode: SINGLE_USER
+            num_workers: 2
+
+      tasks:
+        # ---- Setup -------------------------------------------------------
+        - task_key: setup
+          job_cluster_key: analytics_cluster
+          notebook_task:
+            notebook_path: ../setup/00_setup_unity_catalog
+
+        # ---- Staging (BTEQ) ----------------------------------------------
+        - task_key: stg_customer_360
+          depends_on: [{ task_key: setup }]
+          job_cluster_key: analytics_cluster
+          notebook_task:
+            notebook_path: ../staging/01_stg_customer_360
+
+        - task_key: stg_txn_summary
+          depends_on: [{ task_key: setup }]
+          job_cluster_key: analytics_cluster
+          notebook_task:
+            notebook_path: ../staging/02_stg_txn_summary
+
+        - task_key: stg_risk_factors
+          depends_on: [{ task_key: setup }]
+          job_cluster_key: analytics_cluster
+          notebook_task:
+            notebook_path: ../staging/03_stg_risk_factors
+
+        # ---- Analytics (SAS) ---------------------------------------------
+        - task_key: customer_segments
+          depends_on: [{ task_key: stg_customer_360 }]
+          job_cluster_key: analytics_cluster
+          notebook_task:
+            notebook_path: ../analytics/01_customer_segments
+
+        - task_key: txn_analytics
+          depends_on: [{ task_key: stg_txn_summary }]
+          job_cluster_key: analytics_cluster
+          notebook_task:
+            notebook_path: ../analytics/02_txn_analytics
+
+        - task_key: risk_scoring
+          depends_on:
+            - { task_key: stg_risk_factors }
+            - { task_key: stg_customer_360 }
+          job_cluster_key: analytics_cluster
+          notebook_task:
+            notebook_path: ../analytics/03_risk_scoring
+
+        - task_key: data_products
+          depends_on:
+            - { task_key: customer_segments }
+            - { task_key: txn_analytics }
+            - { task_key: risk_scoring }
+          job_cluster_key: analytics_cluster
+          notebook_task:
+            notebook_path: ../analytics/04_data_products
+
+        # ---- Post-run validation -----------------------------------------
+        - task_key: post_run_validation
+          depends_on: [{ task_key: data_products }]
+          job_cluster_key: analytics_cluster
+          notebook_task:
+            notebook_path: ../validation/post_run_validation
