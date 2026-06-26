@@ -23,6 +23,26 @@ from datetime import datetime
 
 from pyspark.sql import Row
 from pyspark.sql import functions as F
+from pyspark.sql.types import (
+    LongType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+)
+
+# Explicit schema for the audit table so that appends never rely on Spark's
+# schema inference. Inference from a single Row whose row_count is None yields
+# NullType and raises CANNOT_DETERMINE_TYPE, which would crash every "START" log.
+_AUDIT_SCHEMA = StructType([
+    StructField("job_name", StringType()),
+    StructField("step_name", StringType()),
+    StructField("status", StringType()),
+    StructField("message", StringType()),
+    StructField("row_count", LongType()),
+    StructField("start_ts", TimestampType()),
+    StructField("end_ts", TimestampType()),
+])
 
 # COMMAND ----------
 
@@ -103,8 +123,7 @@ def log_step(
         end_ts=now,
     )
     (
-        spark.createDataFrame([row])  # noqa: F821
-        .select("job_name", "step_name", "status", "message", "row_count", "start_ts", "end_ts")
+        spark.createDataFrame([row], schema=_AUDIT_SCHEMA)  # noqa: F821
         .write.mode("append")
         .saveAsTable(audit_table)
     )

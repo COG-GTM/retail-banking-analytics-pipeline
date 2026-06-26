@@ -20,6 +20,15 @@ dbutils.widgets.text("min_rows", "1", "Minimum acceptable rows per product table
 MIN_ROWS = int(dbutils.widgets.get("min_rows"))
 
 ensure_audit_table()
+
+# In dry-run mode (or when the analytics layer was skipped) the data product
+# tables were not (re)populated this run, so skip validation rather than failing
+# the job on empty tables.
+if DRY_RUN:
+    dbutils.notebook.exit("post_run_validation skipped (--dry-run)")  # noqa: F821
+if SKIP_SAS:
+    dbutils.notebook.exit("post_run_validation skipped (--skip-sas)")  # noqa: F821
+
 log_step(step="post_run_validation", status="START", msg="Validating data products")
 
 # COMMAND ----------
