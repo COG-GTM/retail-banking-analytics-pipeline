@@ -4,6 +4,40 @@ An end-to-end data engineering demo showing **Teradata BTEQ** scripts transformi
 operational tables into staging datasets, which then flow into **SAS** analytical
 pipelines, producing a final set of certified **data product** tables.
 
+> **Modernized execution path:** The full pipeline has been migrated to a
+> zero-install **Python + DuckDB** engine (`local/duckdb/run_demo.py`). All BTEQ
+> staging logic is reproduced as DuckDB SQL and all SAS analytics as
+> Python/scikit-learn, so the pipeline runs **without Teradata or SAS**. This is
+> now the primary way to run the pipeline; the original `bteq/` and `sas/`
+> artifacts are retained as the reference specification. See
+> [Quick Start](#quick-start-pythonduckdb-primary).
+
+## Quick Start (Python / DuckDB, primary)
+
+No Teradata or SAS install required — only [`uv`](https://docs.astral.sh/uv/):
+
+```bash
+# Run the full pipeline in-memory and print a summary report
+uv run local/duckdb/run_demo.py
+
+# Generate synthetic sources, run all phases, and export every table to CSV
+# under data/01_source_tables, data/02_bteq_staging, data/03_sas_data_products
+uv run export_data.py                    # 5,000 customers (default)
+uv run export_data.py --customers 10000  # custom count
+```
+
+The engine runs the same four logical phases as the legacy stack:
+
+| Phase | Legacy (replaced) | Python/DuckDB implementation |
+|-------|-------------------|------------------------------|
+| 1. Source load | Teradata DDL + ingestion | `_builtin_populate_sources` (synthetic data into DuckDB) |
+| 2. BTEQ staging | `bteq/*.bteq` | `phase2_bteq_transforms` (DuckDB SQL: joins, aggregations, window funcs, `STDDEV_POP`, `QUALIFY`) |
+| 3. SAS analytics | `sas/*.sas` | `phase3_python_analytics` (KMeans segmentation, percentile rank + IQR anomalies, logistic-regression risk scoring, golden-record merge) |
+| 4. Summary | SAS `PROC PRINT` | `phase4_summary` (stdout report) |
+
+Outputs conform to the schemas in `ddl/01_staging_tables.sql` and
+`ddl/02_data_product_tables.sql`.
+
 ## Architecture
 
 ```
@@ -58,7 +92,11 @@ demo/
 │   ├── 04_sas_data_products.sas           # Golden record assembly
 │   └── run_sas_pipeline.sh               # SAS orchestrator
 ├── orchestration/
-│   └── run_full_pipeline.sh              # End-to-end master orchestrator
+│   └── run_full_pipeline.sh              # End-to-end master orchestrator (legacy)
+├── local/
+│   └── duckdb/
+│       └── run_demo.py                    # Python/DuckDB engine (primary execution path)
+├── export_data.py                         # Run the engine and export all tables to CSV
 └── docs/
     └── pipeline_flow.md                   # Detailed technical documentation
 ```
@@ -117,6 +155,18 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 
 ## Running the Pipeline
 
+### Primary: Python / DuckDB (no Teradata/SAS)
+
+```bash
+uv run local/duckdb/run_demo.py     # full pipeline, in-memory, summary report
+uv run export_data.py               # full pipeline + CSV export of every table
+```
+
+### Legacy: Teradata BTEQ + SAS
+
+Requires a live Teradata environment and a licensed SAS install (see
+[Prerequisites](#prerequisites)). Retained as the reference implementation.
+
 ```bash
 # Full end-to-end run
 ./orchestration/run_full_pipeline.sh
@@ -132,6 +182,14 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 ```
 
 ## Prerequisites
+
+### Python / DuckDB path (primary)
+
+- **[uv](https://docs.astral.sh/uv/)** — manages Python 3.10+ and the inline
+  dependencies (`duckdb`, `pandas`, `numpy`, `scikit-learn`, `faker`) declared in
+  the script headers; no manual `pip install` needed.
+
+### Legacy Teradata/SAS path
 
 - **Teradata**: BTEQ client (TTU 17.x+), service account with SELECT on source DBs
   and ALL on staging/data product DBs
