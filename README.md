@@ -4,6 +4,13 @@ An end-to-end data engineering demo showing **Teradata BTEQ** scripts transformi
 operational tables into staging datasets, which then flow into **SAS** analytical
 pipelines, producing a final set of certified **data product** tables.
 
+The legacy BTEQ + SAS ETL has been **migrated to a modern Python/DuckDB engine**
+(`local/duckdb/run_demo.py`, driven by `export_data.py`) that reproduces the same
+transformation logic and output schemas with **no Teradata or SAS dependency**.
+This is now the primary, recommended way to run the pipeline; the original BTEQ and
+SAS code is retained as the reference source of truth. See
+[Running the Pipeline](#running-the-pipeline) and `docs/pipeline_flow.md`.
+
 ## Architecture
 
 ```
@@ -36,6 +43,10 @@ pipelines, producing a final set of certified **data product** tables.
 ```
 demo/
 ├── README.md                              # This file
+├── export_data.py                         # Entry point: drives the Python/DuckDB engine
+├── local/
+│   └── duckdb/
+│       └── run_demo.py                    # Migrated Python/DuckDB pipeline engine (primary)
 ├── config/
 │   └── pipeline_config.cfg                # Environment variables, DB refs, paths
 ├── ddl/
@@ -117,6 +128,29 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 
 ## Running the Pipeline
 
+### Primary: Python/DuckDB engine (no Teradata/SAS required)
+
+The migrated engine runs the full pipeline — source generation → BTEQ staging
+transforms → SAS analytics — and writes every CSV under `data/`:
+
+```bash
+# Full end-to-end run (5,000 customers by default)
+uv run export_data.py
+
+# Custom customer count
+uv run export_data.py --customers 10000
+```
+
+This requires only [`uv`](https://docs.astral.sh/uv/) (Python ≥3.10);
+dependencies (`duckdb`, `pandas`, `scikit-learn`, `numpy`, `faker`) are declared
+inline in `export_data.py` / `local/duckdb/run_demo.py` and resolved automatically.
+Outputs conform to `ddl/01_staging_tables.sql` and `ddl/02_data_product_tables.sql`.
+
+### Reference: legacy Teradata BTEQ + SAS
+
+The original orchestrator still drives the BTEQ + SAS code against a live Teradata
+instance and a SAS install (retained as the migration source of truth):
+
 ```bash
 # Full end-to-end run
 ./orchestration/run_full_pipeline.sh
@@ -133,6 +167,10 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 
 ## Prerequisites
 
+**Python/DuckDB engine (primary):**
+- [`uv`](https://docs.astral.sh/uv/) with Python ≥3.10 — no other setup needed
+
+**Legacy BTEQ + SAS engine (reference only):**
 - **Teradata**: BTEQ client (TTU 17.x+), service account with SELECT on source DBs
   and ALL on staging/data product DBs
 - **SAS**: SAS 9.4 M7+ with Base SAS, SAS/STAT, SAS/ACCESS Interface to Teradata
