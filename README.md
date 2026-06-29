@@ -58,7 +58,12 @@ demo/
 │   ├── 04_sas_data_products.sas           # Golden record assembly
 │   └── run_sas_pipeline.sh               # SAS orchestrator
 ├── orchestration/
-│   └── run_full_pipeline.sh              # End-to-end master orchestrator
+│   └── run_full_pipeline.sh              # End-to-end master orchestrator (legacy)
+├── local/
+│   └── duckdb/
+│       └── run_demo.py                    # Migrated Python/DuckDB pipeline engine
+├── export_data.py                         # Entrypoint: runs the engine, writes CSVs
+├── data/                                  # Generated CSV outputs (3 layers)
 └── docs/
     └── pipeline_flow.md                   # Detailed technical documentation
 ```
@@ -117,21 +122,58 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 
 ## Running the Pipeline
 
+### Primary path: Python + DuckDB (no Teradata, no SAS)
+
+The entire pipeline has been migrated into a self-contained Python/DuckDB engine at
+[`local/duckdb/run_demo.py`](local/duckdb/run_demo.py). It reproduces every BTEQ
+staging transform (as DuckDB SQL) and every SAS analytics program (as
+pandas + scikit-learn) and runs end-to-end on a laptop with no external systems.
+
 ```bash
-# Full end-to-end run
-./orchestration/run_full_pipeline.sh
+# Full end-to-end run (Phase 1 sources -> Phase 2 BTEQ -> Phase 3 SAS analytics)
+# Writes all CSVs to data/01_source_tables, data/02_bteq_staging, data/03_sas_data_products
+uv run export_data.py                    # 5,000 customers (default)
+uv run export_data.py --customers 10000  # custom volume
+```
 
-# Skip BTEQ (re-run only SAS on existing staging data)
-./orchestration/run_full_pipeline.sh --skip-bteq
+`uv` auto-installs the pinned dependencies (`duckdb`, `pandas`, `scikit-learn`,
+`numpy`, `faker`) declared inline in the script — no virtualenv setup needed.
+Source generation is seeded, so runs are reproducible apart from `LOAD_TS`.
 
-# Skip SAS (refresh only BTEQ staging)
-./orchestration/run_full_pipeline.sh --skip-sas
+| Legacy job | Migrated to (`run_demo.py`) | Engine |
+|------------|------------------------------|--------|
+| `bteq/01_stg_customer_360.bteq` | `phase2_bteq_transforms` → `STG_CUSTOMER_360` | DuckDB SQL |
+| `bteq/02_stg_txn_summary.bteq`  | `phase2_bteq_transforms` → `STG_TXN_SUMMARY`  | DuckDB SQL |
+| `bteq/03_stg_risk_factors.bteq` | `phase2_bteq_transforms` → `STG_RISK_FACTORS`  | DuckDB SQL (CTEs, `STDDEV_POP`) |
+| `sas/01_sas_customer_segments.sas` | `phase3_python_analytics` → `CUSTOMER_SEGMENTS` | `StandardScaler` + `KMeans` (k=5) |
+| `sas/02_sas_txn_analytics.sas`     | `phase3_python_analytics` → `TRANSACTION_ANALYTICS` | percentile rank + IQR anomaly |
+| `sas/03_sas_risk_scoring.sas`      | `phase3_python_analytics` → `CUSTOMER_RISK_SCORES` | `LogisticRegression` + weighted composite |
+| `sas/04_sas_data_products.sas`     | `phase3_python_analytics` → `CUSTOMER_MASTER_PROFILE` | 4-way pandas merge (golden record) |
 
-# Dry run (print steps without executing)
-./orchestration/run_full_pipeline.sh --dry-run
+Output table schemas match `ddl/01_staging_tables.sql` and
+`ddl/02_data_product_tables.sql` exactly (column names and order).
+
+### Legacy path: Teradata BTEQ + SAS (reference only)
+
+The original Teradata/SAS implementation is retained under `bteq/`, `sas/`, and
+`orchestration/` as the source of truth for the migrated logic. It requires a live
+Teradata instance and a SAS install and is not needed for the Python/DuckDB run.
+
+```bash
+./orchestration/run_full_pipeline.sh              # full end-to-end run
+./orchestration/run_full_pipeline.sh --skip-bteq  # re-run only SAS
+./orchestration/run_full_pipeline.sh --skip-sas   # refresh only BTEQ staging
+./orchestration/run_full_pipeline.sh --dry-run    # print steps without executing
 ```
 
 ## Prerequisites
+
+### Python/DuckDB path (primary)
+
+- **Python**: 3.10+
+- **uv**: [Astral `uv`](https://docs.astral.sh/uv/) (handles dependencies inline; no other setup)
+
+### Legacy Teradata/SAS path (reference only)
 
 - **Teradata**: BTEQ client (TTU 17.x+), service account with SELECT on source DBs
   and ALL on staging/data product DBs
