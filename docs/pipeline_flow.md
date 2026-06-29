@@ -1,5 +1,45 @@
 # Pipeline Technical Documentation
 
+## Primary Execution Path: Python + DuckDB
+
+The pipeline's primary, dependency-free execution path is the Python/DuckDB
+engine in `local/duckdb/run_demo.py`, driven by `export_data.py`. It reproduces
+all legacy Teradata BTEQ and SAS ETL logic so the full pipeline runs without a
+Teradata or SAS install:
+
+```bash
+uv run export_data.py                    # 5,000 customers (default)
+uv run export_data.py --customers 10000  # custom count
+```
+
+### Phase mapping (migrated logic)
+
+```
+ SOURCE GENERATION            BTEQ STAGING (DuckDB SQL)         SAS ANALYTICS (pandas + scikit-learn)
+ =================            ========================         =====================================
+ _builtin_populate_sources    phase2_bteq_transforms           phase3_python_analytics
+   Faker + numpy                _stg_customer_360   <- bteq/01    _sas_customer_segments  <- sas/01 (k-means, k=5)
+   fixed seed (42)              _stg_txn_summary    <- bteq/02    _sas_txn_analytics      <- sas/02 (PROC RANK + IQR)
+                               _stg_risk_factors    <- bteq/03    _sas_risk_scoring       <- sas/03 (logistic PD)
+                                                                  _sas_data_products      <- sas/04 (golden record)
+```
+
+| Legacy artifact | Migrated to | Notes on faithful reproduction |
+|-----------------|-------------|--------------------------------|
+| `bteq/01_stg_customer_360.bteq` | `_stg_customer_360` | LEFT JOINs, `QUALIFY ROW_NUMBER()` for primary HOME address, account-portfolio aggregation, `AGE`/`TENURE_MONTHS`/`CREDIT_UTILIZATION_PCT` derivations |
+| `bteq/02_stg_txn_summary.bteq` | `_stg_txn_summary` | 12-month lookback (`LOOKBACK_MONTHS`), volume/amount aggregations, channel-mix %, top merchant category per account, recency |
+| `bteq/03_stg_risk_factors.bteq` | `_stg_risk_factors` | Daily-balance & payment-history work CTEs, `STDDEV_POP` balance volatility, overdraft/NSF, large-withdrawal, velocity (7d/30d), bureau join, new-merchant & high-risk-merchant indicators |
+| `sas/01_sas_customer_segments.sas` | `_sas_customer_segments` | `StandardScaler` (PROC STDIZE) + `KMeans` k=5 (PROC FASTCLUS); clusters labelled by mean balance rank; LTV/engagement/breadth scores and action flags |
+| `sas/02_sas_txn_analytics.sas` | `_sas_txn_analytics` | Customer-level aggregation, spend-trend rules, `PROC RANK groups=100` percentile buckets (0–99), `PROC MEANS` median+3·IQR anomaly flag |
+| `sas/03_sas_risk_scoring.sas` | `_sas_risk_scoring` | `LogisticRegression` PD model, weighted composite risk score, 5-tier classification, top-two risk drivers, watch-list/review flags |
+| `sas/04_sas_data_products.sas` | `_sas_data_products` | 4-way left merge into `CUSTOMER_MASTER_PROFILE` with default handling for missing upstream products |
+
+Output schemas conform to `ddl/01_staging_tables.sql` and
+`ddl/02_data_product_tables.sql`. Runs are deterministic (fixed RNG seeds) apart
+from wall-clock `LOAD_TS` columns.
+
+The Teradata/SAS data flow below is retained as the **legacy reference**.
+
 ## Data Flow Diagram
 
 ```
