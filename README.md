@@ -42,11 +42,21 @@ demo/
 │   ├── 00_source_tables.sql               # Source table DDL (documentation)
 │   ├── 01_staging_tables.sql              # BTEQ staging table DDL
 │   └── 02_data_product_tables.sql         # Final data product DDL
-├── bteq/
+├── bteq/                                  # Legacy Teradata BTEQ (kept for reference)
 │   ├── 01_stg_customer_360.bteq           # Customer denormalization
 │   ├── 02_stg_txn_summary.bteq           # Transaction aggregation
 │   ├── 03_stg_risk_factors.bteq          # Risk feature engineering
 │   └── run_bteq_pipeline.sh              # BTEQ orchestrator
+├── dbt/                                   # dbt project (staging on Databricks)
+│   ├── dbt_project.yml                    # Project config, lookback_months var
+│   ├── profiles.yml                       # Example databricks profile (no creds)
+│   ├── packages.yml                       # dbt_utils dependency
+│   └── models/staging/                    # Ported staging models + sources + tests
+│       ├── _sources.yml                   # Source table declarations
+│       ├── _staging.yml                   # Model + column tests
+│       ├── stg_customer_360.sql           # from 01_stg_customer_360.bteq
+│       ├── stg_txn_summary.sql            # from 02_stg_txn_summary.bteq
+│       └── stg_risk_factors.sql           # from 03_stg_risk_factors.bteq
 ├── sas/
 │   ├── macros/
 │   │   ├── connect_teradata.sas           # Teradata LIBNAME connections
@@ -65,29 +75,42 @@ demo/
 
 ## Pipeline Phases
 
-### Phase 1: Teradata BTEQ Staging
+### Phase 1: Staging (dbt on Databricks)
 
-The BTEQ scripts run directly on Teradata to perform heavy-lifting transformations
-close to the data. Each script follows a consistent pattern:
+> **Migration note:** The staging layer has been migrated off Teradata BTEQ. It now
+> runs as **dbt models on Databricks** (Delta tables / Spark SQL) under `dbt/`.
+> The original BTEQ scripts remain in `bteq/` for reference, but the dbt models are
+> the source of truth. See [Running the dbt models](#running-the-dbt-models).
 
-| Script | Source Tables | Target | Key Operations |
-|--------|-------------|--------|----------------|
-| `01_stg_customer_360.bteq` | CUSTOMERS, ACCOUNTS, ADDRESSES | STG_CUSTOMER_360 | LEFT JOINs, QUALIFY ROW_NUMBER, CASE expressions, derived metrics |
-| `02_stg_txn_summary.bteq` | TRANSACTIONS, TRANSACTION_TYPES, ACCOUNTS | STG_TXN_SUMMARY | Aggregations (SUM/AVG/COUNT), channel mix %, volatile table params |
-| `03_stg_risk_factors.bteq` | TRANSACTIONS, ACCOUNTS, CUSTOMERS | STG_RISK_FACTORS | Work tables, STDDEV_POP, velocity calcs, multi-pass joins, cleanup |
+The dbt staging models perform the same heavy-lifting transformations, materialized
+as Delta tables via the `dbt-databricks` adapter:
 
-BTEQ conventions used:
-- `.SET ERRORLEVEL 3807 SEVERITY 0` - suppress "table does not exist" on DROP
-- `.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE` - fail-fast error handling
-- `.IF ACTIVITYCOUNT = 0 THEN .EXIT 99` - zero-row validation
-- `COLLECT STATISTICS` after every table creation
-- `CREATE TABLE ... AS (...) WITH DATA PRIMARY INDEX (...)` pattern
-- ETL_RUN_LOG audit inserts at each step
+| dbt model | Ported from | Source Tables | Target (Delta) | Key Operations |
+|-----------|-------------|---------------|----------------|----------------|
+| `stg_customer_360.sql` | `01_stg_customer_360.bteq` | customers, accounts, addresses | `stg_customer_360` | LEFT JOINs, `QUALIFY ROW_NUMBER`, CASE expressions, derived metrics |
+| `stg_txn_summary.sql` | `02_stg_txn_summary.bteq` | transactions, transaction_types, accounts | `stg_txn_summary` | Aggregations (SUM/AVG/COUNT), channel mix %, `lookback_months` var CTE |
+| `stg_risk_factors.sql` | `03_stg_risk_factors.bteq` | transactions, accounts, customers, customer_bureau_scores | `stg_risk_factors` | CTE work tables, `stddev_pop`, velocity windows, multi-pass joins |
+
+Teradata/BTEQ-only constructs were dropped during the port and replaced with dbt
+equivalents:
+
+| Legacy BTEQ construct | dbt / Databricks replacement |
+|-----------------------|------------------------------|
+| `CREATE TABLE ... WITH DATA PRIMARY INDEX (...)` | `+materialized: table` (Delta tables) |
+| `COLLECT STATISTICS` | (removed — not needed on Databricks) |
+| `.SET` / `.LOGON` / `.IF` / `.LABEL` / `.EXIT` | (removed — dbt handles orchestration & errors) |
+| `.IF ACTIVITYCOUNT = 0 THEN .EXIT 99` | dbt row-count test in `_staging.yml` |
+| `ETL_RUN_LOG` audit inserts | dbt run results / logs |
+| `VT_RUN_PARAMS` volatile table | `run_params` CTE from `var('lookback_months')` |
+| `NULLIFZERO(...)` | `nullif(..., 0)` |
+| `(INTEGER)` inline casts | `cast(... as int)` |
 
 ### Phase 2: SAS Analytics
 
-SAS programs read from the staging tables via SAS/ACCESS to Teradata and apply
-statistical and business-rule transformations:
+SAS programs consume the staging tables and apply statistical and business-rule
+transformations. Following the dbt migration, these Phase 2 consumers now read the
+**dbt-produced Delta tables** on Databricks (`stg_customer_360`, `stg_txn_summary`,
+`stg_risk_factors`) instead of the Teradata BTEQ staging tables:
 
 | Program | Input | Output | SAS Techniques |
 |---------|-------|--------|----------------|
@@ -115,6 +138,35 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 | **CUSTOMER_RISK_SCORES** | Composite risk scores with probability of default | Credit, Collections |
 | **CUSTOMER_MASTER_PROFILE** | Golden record joining all products | Enterprise-wide |
 
+## Running the dbt models
+
+The staging layer (Phase 1) runs as dbt models against a Databricks target.
+
+```bash
+cd dbt
+
+# 1. Install package dependencies (dbt_utils)
+dbt deps
+
+# 2. Configure a Databricks profile. Copy dbt/profiles.yml to ~/.dbt/profiles.yml
+#    (or set DBT_PROFILES_DIR=$(pwd)) and provide your workspace values, e.g.:
+#      export DBT_DATABRICKS_HOST=dbc-xxxx.cloud.databricks.com
+#      export DBT_DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/xxxxxxxx
+#      export DBT_DATABRICKS_TOKEN=dapi...            # do NOT commit this
+#      export DBT_DATABRICKS_CATALOG=retail_banking
+#      export DBT_DATABRICKS_SCHEMA=etl_staging
+
+# 3. Build the staging models and run their tests (Delta tables on Databricks)
+dbt build --select staging
+```
+
+`dbt build --select staging` compiles and runs the three staging models
+(`stg_customer_360`, `stg_txn_summary`, `stg_risk_factors`) as Delta tables and
+executes the `not_null` / `unique` / combination-uniqueness / row-count tests
+defined in `dbt/models/staging/_staging.yml`. The `lookback_months` var (default
+`12`, mirroring `LOOKBACK_MONTHS` in `config/pipeline_config.cfg`) can be
+overridden with `--vars '{lookback_months: 6}'`.
+
 ## Running the Pipeline
 
 ```bash
@@ -133,10 +185,13 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 
 ## Prerequisites
 
-- **Teradata**: BTEQ client (TTU 17.x+), service account with SELECT on source DBs
-  and ALL on staging/data product DBs
-- **SAS**: SAS 9.4 M7+ with Base SAS, SAS/STAT, SAS/ACCESS Interface to Teradata
+- **Databricks (staging)**: a workspace with a SQL warehouse or cluster, plus
+  `dbt-core` and the `dbt-databricks` adapter (`pip install dbt-databricks`). The
+  source schemas (`core_banking`, `txn_processing`) must exist in the target catalog.
+- **SAS**: SAS 9.4 M7+ with Base SAS, SAS/STAT (reads the dbt-produced Delta tables)
 - **Shell**: bash 4+, `envsubst` (from gettext)
+- **Teradata** _(legacy only)_: BTEQ client (TTU 17.x+) — retained for the original
+  `bteq/` scripts; no longer required for the staging layer.
 
 ## Reference Repositories
 
