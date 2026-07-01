@@ -1,0 +1,27 @@
+# -----------------------------------------------------------------------------
+# Example profiles.yml for the retail_banking_analytics dbt project.
+#
+# This is an EXAMPLE. Copy it to ~/.dbt/profiles.yml (or point DBT_PROFILES_DIR
+# at this directory) and replace the placeholders with your own Databricks
+# workspace values. Do NOT commit real credentials — prefer environment
+# variables (shown below with env_var) or a secret manager.
+#
+# Required Databricks connection values:
+#   host   : your workspace hostname, e.g. dbc-xxxxxxxx-xxxx.cloud.databricks.com
+#   http_path : the SQL warehouse / cluster HTTP path,
+#               e.g. /sql/1.0/warehouses/abcdef1234567890
+#   token  : a Databricks personal access token (or use OAuth)
+#   catalog: Unity Catalog catalog that holds the source + staging schemas
+#   schema : target schema for the staging Delta tables
+# -----------------------------------------------------------------------------
+retail_banking_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: databricks
+      catalog: "{{ env_var('DBT_DATABRICKS_CATALOG', 'retail_banking') }}"
+      schema: "{{ env_var('DBT_DATABRICKS_SCHEMA', 'etl_staging') }}"
+      host: "{{ env_var('DBT_DATABRICKS_HOST') }}"
+      http_path: "{{ env_var('DBT_DATABRICKS_HTTP_PATH') }}"
+      token: "{{ env_var('DBT_DATABRICKS_TOKEN') }}"
+      threads: 4

@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: stg_customer_360
+    description: >
+      Denormalized customer-360 staging model (ported from
+      bteq/01_stg_customer_360.bteq). Materialized as a Delta table.
+    # Replaces the BTEQ ".IF ACTIVITYCOUNT = 0 THEN .EXIT 99" zero-row guard.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "count(*) > 0"
+    columns:
+      - name: customer_id
+        description: Unique customer identifier.
+        tests:
+          - not_null
+          - unique
+
+  - name: stg_txn_summary
+    description: >
+      Per-customer/account transaction summary over the lookback window
+      (ported from bteq/02_stg_txn_summary.bteq). Materialized as a Delta table.
+    # Replaces the BTEQ ".IF ACTIVITYCOUNT = 0 THEN .EXIT 99" zero-row guard.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "count(*) > 0"
+      # Combination uniqueness on the (customer_id, account_id) grain.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - customer_id
+              - account_id
+    columns:
+      - name: customer_id
+        tests:
+          - not_null
+      - name: account_id
+        tests:
+          - not_null
+
+  - name: stg_risk_factors
+    description: >
+      Per-customer risk feature vectors (ported from
+      bteq/03_stg_risk_factors.bteq). Materialized as a Delta table.
+    # Replaces the BTEQ ".IF ACTIVITYCOUNT = 0 THEN .EXIT 99" zero-row guard.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "count(*) > 0"
+    columns:
+      - name: customer_id
+        description: Unique customer identifier.
+        tests:
+          - not_null
+          - unique

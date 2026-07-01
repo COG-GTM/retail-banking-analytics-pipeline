@@ -1,0 +1,127 @@
+version: 2
+
+sources:
+  - name: core_banking
+    description: >
+      Operational customer/account data from the core banking platform.
+      On Teradata this was CORE_BANKING_DB; on Databricks it maps to the
+      configured catalog with a `core_banking` schema.
+    schema: core_banking
+    tables:
+      - name: customers
+        description: Master customer record from the core banking platform.
+        columns:
+          - name: customer_id
+            data_type: bigint
+          - name: first_name
+          - name: last_name
+          - name: date_of_birth
+            data_type: date
+          - name: ssn_hash
+          - name: email
+          - name: phone_primary
+          - name: customer_since
+            data_type: date
+          - name: customer_status
+            description: "A=Active, I=Inactive, C=Closed"
+          - name: segment_code
+          - name: branch_id
+          - name: created_ts
+          - name: updated_ts
+
+      - name: accounts
+        description: Account-level detail (checking, savings, credit, loan).
+        columns:
+          - name: account_id
+            data_type: bigint
+          - name: customer_id
+            data_type: bigint
+          - name: account_type
+            description: "CHECKING, SAVINGS, CREDIT, LOAN"
+          - name: account_status
+            description: "O=Open, C=Closed, F=Frozen"
+          - name: open_date
+            data_type: date
+          - name: close_date
+            data_type: date
+          - name: current_balance
+          - name: available_balance
+          - name: credit_limit
+          - name: interest_rate
+          - name: branch_id
+          - name: created_ts
+          - name: updated_ts
+
+      - name: addresses
+        description: Customer mailing and residential addresses (SCD Type 2).
+        columns:
+          - name: address_id
+            data_type: bigint
+          - name: customer_id
+            data_type: bigint
+          - name: address_type
+            description: "MAIL, HOME, WORK"
+          - name: address_line_1
+          - name: address_line_2
+          - name: city
+          - name: state_code
+          - name: zip_code
+          - name: country_code
+          - name: is_primary
+          - name: effective_date
+            data_type: date
+          - name: expiration_date
+            data_type: date
+          - name: created_ts
+          - name: updated_ts
+
+      - name: customer_bureau_scores
+        description: External credit bureau scores per customer over time.
+        columns:
+          - name: customer_id
+            data_type: bigint
+          - name: external_credit_score
+          - name: report_date
+            data_type: date
+
+  - name: txn_processing
+    description: >
+      Transaction processing tables. On Teradata this was TXN_PROCESSING_DB;
+      on Databricks it maps to the configured catalog with a `txn_processing`
+      schema.
+    schema: txn_processing
+    tables:
+      - name: transactions
+        description: Individual financial transactions across all account types.
+        columns:
+          - name: transaction_id
+            data_type: bigint
+          - name: account_id
+            data_type: bigint
+          - name: transaction_type_cd
+          - name: transaction_date
+            data_type: date
+          - name: transaction_ts
+          - name: amount
+          - name: running_balance
+          - name: merchant_name
+          - name: merchant_category
+          - name: channel_code
+            description: "ATM, POS, WEB, MOB, ACH, WIRE, INTL"
+          - name: reference_num
+          - name: status_code
+            description: "P=Posted, R=Reversed, H=Hold"
+          - name: created_ts
+
+      - name: transaction_types
+        description: Reference/lookup table for transaction type codes.
+        columns:
+          - name: transaction_type_cd
+          - name: description
+          - name: category
+            description: "DEBIT, CREDIT, FEE, INTEREST"
+          - name: is_revenue
+          - name: effective_date
+            data_type: date
+          - name: expiration_date
+            data_type: date

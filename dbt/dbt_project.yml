@@ -1,0 +1,31 @@
+name: 'retail_banking_analytics'
+version: '1.0.0'
+config-version: 2
+
+# This profile must exist in your profiles.yml (see dbt/profiles.yml for an example).
+profile: 'retail_banking_analytics'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Project variables. `lookback_months` mirrors LOOKBACK_MONTHS in
+# config/pipeline_config.cfg and is used by the staging txn/risk models.
+vars:
+  lookback_months: 12
+
+models:
+  retail_banking_analytics:
+    staging:
+      # Staging models replace the legacy Teradata BTEQ scripts and are
+      # materialized as Delta tables on Databricks (dbt-databricks default).
+      +materialized: table
+      +file_format: delta
