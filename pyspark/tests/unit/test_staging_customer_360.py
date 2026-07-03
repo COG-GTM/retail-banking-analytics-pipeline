@@ -43,10 +43,10 @@ def test_excludes_closed_customers(spark, cfg):
     assert ids == {1, 2}
 
 
-def test_age_and_tenure_truncate(spark, cfg):
+def test_age_and_tenure_round(spark, cfg):
     out = job.transform(_customers(spark), fx.accounts(spark, []), fx.addresses(spark, []), cfg)
     row = out.filter("customer_id = 1").collect()[0]
-    assert row.age == 23          # 23.96 truncated (SMALLINT), not rounded
+    assert row.age == 24          # 23.96 -> round-half-up (Teradata CAST AS SMALLINT)
     assert row.tenure_months == 28
 
 

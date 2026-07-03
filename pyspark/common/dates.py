@@ -6,8 +6,10 @@ express the same semantics as Spark ``Column`` expressions driven by the
 config-supplied ``run_date`` (never the wall clock inside a transform).
 
 Fidelity notes (see MIGRATION_NOTES.md):
-* Teradata ``CAST(x AS SMALLINT/INTEGER)`` truncates toward zero.  ``AGE`` and
-  ``TENURE_MONTHS`` therefore use ``floor`` for the (always non-negative) values.
+* Teradata ``CAST(x AS SMALLINT/INTEGER)`` ROUNDS to the nearest integer
+  (round-half-up), it does NOT truncate.  ``AGE`` (23.96 -> 24) and
+  ``TENURE_MONTHS`` therefore use ``round`` (Spark ``F.round`` is HALF_UP),
+  matching the legacy staging outputs exactly.
 """
 
 from __future__ import annotations
@@ -19,15 +21,15 @@ from pyspark.sql import functions as F
 
 
 def age_expr(dob_col: str, run_date: _dt.date) -> Column:
-    """CAST((CURRENT_DATE - DATE_OF_BIRTH) / 365.25 AS SMALLINT)."""
+    """CAST((CURRENT_DATE - DATE_OF_BIRTH) / 365.25 AS SMALLINT) (rounds)."""
     days = F.datediff(F.lit(run_date), F.col(dob_col))
-    return F.floor(days / F.lit(365.25)).cast("short")
+    return F.round(days / F.lit(365.25)).cast("short")
 
 
 def tenure_months_expr(since_col: str, run_date: _dt.date) -> Column:
-    """CAST(MONTHS_BETWEEN(CURRENT_DATE, CUSTOMER_SINCE) AS INTEGER)."""
+    """CAST(MONTHS_BETWEEN(CURRENT_DATE, CUSTOMER_SINCE) AS INTEGER) (rounds)."""
     months = F.months_between(F.lit(run_date), F.col(since_col))
-    return F.floor(months).cast("int")
+    return F.round(months).cast("int")
 
 
 def days_since_expr(date_col: str, run_date: _dt.date) -> Column:
