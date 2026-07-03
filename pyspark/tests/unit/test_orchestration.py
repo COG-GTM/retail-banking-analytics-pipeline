@@ -27,9 +27,9 @@ def test_pipeline_has_seven_tasks_and_valid_order():
 
 def test_bteq_before_sas_gate():
     tasks = P.build_pipeline()
-    order = [t.name for t in P.topological_order(tasks)]
-    last_bteq = max(i for i, t in enumerate(P.topological_order(tasks)) if t.phase == "BTEQ")
-    first_sas = min(i for i, t in enumerate(P.topological_order(tasks)) if t.phase == "SAS")
+    order = P.topological_order(tasks)
+    last_bteq = max(i for i, t in enumerate(order) if t.phase == "BTEQ")
+    first_sas = min(i for i, t in enumerate(order) if t.phase == "SAS")
     assert last_bteq < first_sas
 
 
@@ -102,6 +102,4 @@ def test_run_pipeline_fail_fast_skips_downstream(spark, config):
     ]
     with pytest.raises(P.PipelineError):
         P.run_pipeline(spark, io=None, config=config, tasks=tasks)
-    assert "downstream" not in executed  # fail-fast
-
-    run_statuses = None  # the raised error already asserts abort
+    assert "downstream" not in executed  # fail-fast; the raised error asserts abort

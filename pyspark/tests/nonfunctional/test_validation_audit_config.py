@@ -7,7 +7,6 @@ import datetime as _dt
 
 import pytest
 
-from common import schemas
 from common.audit import (
     ETL_RUN_LOG_SCHEMA,
     PIPELINE_AUDIT_SCHEMA,
