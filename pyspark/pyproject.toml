@@ -12,7 +12,7 @@ dependencies = [
     "numpy==1.26.4",
     # pyspark.ml (customer-segments clustering) imports distutils, removed from
     # the stdlib in Python 3.12; setuptools restores it.
-    "setuptools>=69",
+    "setuptools==75.8.0",
 ]
 
 [project.optional-dependencies]
@@ -42,7 +42,8 @@ markers = [
 ]
 # Performance tier is slow + scale-dependent; deselected by default. Run it
 # explicitly with `pytest -m performance` (CLI -m overrides this default).
-addopts = "-ra -m 'not performance'"
+# Coverage gate fails the build below 90% line coverage (task requirement).
+addopts = "-ra -m 'not performance' --cov --cov-report=term-missing --cov-fail-under=90"
 
 [tool.coverage.run]
 source = ["common", "jobs", "orchestration"]

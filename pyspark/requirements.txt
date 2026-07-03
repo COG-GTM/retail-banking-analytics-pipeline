@@ -1,12 +1,10 @@
 # Runtime + test dependencies for the PySpark retail-banking analytics pipeline.
 # Pinned for reproducibility (Rules R4). PySpark 3.5.x supports Java 11/17.
 pyspark==3.5.1
-# pyspark.ml imports distutils, removed in Python 3.12; setuptools vendors it.
+# distutils was removed from the stdlib in Python 3.12; pyspark.ml (clustering +
+# logistic jobs) still imports it, so setuptools must provide it.
 setuptools==75.8.0
 numpy==1.26.4
-# distutils was removed from the stdlib in Python 3.12; pyspark.ml (used by the
-# customer-segments clustering job) still imports it, so setuptools must provide it.
-setuptools>=69
 pytest==8.2.2
 pytest-cov==5.0.0
 chispa==0.10.1

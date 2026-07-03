@@ -18,15 +18,26 @@ from common import schemas
 from common.config import PipelineConfig
 from common.io import DataIO
 
-_CHANNELS = ["ATM", "POS", "WEB", "MOB"]
-_CATEGORIES = ["GROCERY", "FUEL", "RESTAURANT", "RETAIL", "TRAVEL", "UTILITIES"]
+# Domains mirror the committed source fixtures so every downstream filter
+# (status_code='P', category DEBIT/CREDIT/FEE, channel mix, account_status='O')
+# actually matches rows.
+_CHANNELS = ["ACH", "POS", "WEB", "ATM", "MOB"]
+_CATEGORIES = ["GROCERY", "GAS_STATION", "RESTAURANT", "RETAIL", "TRAVEL", "UTILITIES"]
 _ACCT_TYPES = ["CHECKING", "SAVINGS", "CREDIT", "LOAN"]
+# (code, description, category, is_revenue)
 _TXN_TYPES = [
-    ("DBT", "Debit purchase", "PURCHASE", "N"),
-    ("CRD", "Credit/deposit", "DEPOSIT", "N"),
-    ("FEE", "Service fee", "FEE", "Y"),
-    ("WD", "Withdrawal", "WITHDRAWAL", "N"),
+    ("PUR", "Purchase", "DEBIT", "N"),
+    ("WDR", "Withdrawal", "DEBIT", "N"),
+    ("TRF", "Transfer", "DEBIT", "N"),
+    ("DEP", "Deposit", "CREDIT", "N"),
+    ("PMT", "Payment", "CREDIT", "N"),
+    ("INT", "Interest", "CREDIT", "Y"),
+    ("FEE", "Account Fee", "FEE", "Y"),
+    ("NSF", "NSF Fee", "FEE", "Y"),
 ]
+_DEBIT_CODES = ["PUR", "WDR", "TRF"]
+_CREDIT_CODES = ["DEP", "PMT", "INT"]
+_FEE_CODES = ["FEE", "NSF"]
 
 
 def synthetic_sources(
@@ -63,7 +74,7 @@ def synthetic_sources(
         cust.select("customer_id").withColumn("k", acct_offsets)
         .withColumn("account_id", F.col("customer_id") * 10 + F.col("k"))
         .withColumn("account_type", F.element_at(F.array(*[F.lit(x) for x in _ACCT_TYPES]), (F.col("k") % len(_ACCT_TYPES) + 1).cast("int")))
-        .withColumn("account_status", F.when(F.col("account_id") % 25 == 0, F.lit("C")).otherwise(F.lit("O")))
+        .withColumn("account_status", F.when(F.col("account_id") % 25 == 0, F.lit("C")).when(F.col("account_id") % 40 == 0, F.lit("F")).otherwise(F.lit("O")))
         .withColumn("open_date", F.expr(f"date_sub(date'{run_date}', cast(60 + pmod(account_id*29, 4000) as int))"))
         .withColumn("close_date", F.when(F.col("account_status") == "C", F.expr(f"date_sub(date'{run_date}', 10)")).otherwise(F.lit(None).cast("date")))
         .withColumn("current_balance", (F.pmod(F.col("account_id") * 17, F.lit(50000)) + 100).cast("decimal(15,2)"))
@@ -111,8 +122,8 @@ def synthetic_sources(
         .withColumn("transaction_ts", F.col("transaction_date").cast("timestamp"))
         .withColumn(
             "amount",
-            F.when(F.col("transaction_type_cd") == "CRD", (F.pmod(F.col("transaction_id") * 7, F.lit(2000)) + 50).cast("decimal(15,2)"))
-            .when(F.col("transaction_type_cd") == "FEE", F.lit(-35).cast("decimal(15,2)"))
+            F.when(F.col("transaction_type_cd").isin(_CREDIT_CODES), (F.pmod(F.col("transaction_id") * 7, F.lit(2000)) + 50).cast("decimal(15,2)"))
+            .when(F.col("transaction_type_cd").isin(_FEE_CODES), F.lit(-35).cast("decimal(15,2)"))
             .otherwise((F.pmod(F.col("transaction_id") * 11, F.lit(1500)) + 5).cast("decimal(15,2)") * F.lit(-1)),
         )
         .withColumn("running_balance", F.lit(1000).cast("decimal(15,2)"))
@@ -120,7 +131,8 @@ def synthetic_sources(
         .withColumn("merchant_category", F.element_at(F.array(*[F.lit(x) for x in _CATEGORIES]), (F.col("transaction_id") % len(_CATEGORIES) + 1).cast("int")))
         .withColumn("channel_code", F.element_at(F.array(*[F.lit(x) for x in _CHANNELS]), (F.col("transaction_id") % len(_CHANNELS) + 1).cast("int")))
         .withColumn("reference_num", F.col("transaction_id").cast("string"))
-        .withColumn("status_code", F.lit("POSTED"))
+        # Mostly posted ('P') with some held/reversed, mirroring the source mix.
+        .withColumn("status_code", F.when(F.col("transaction_id") % 5 == 4, F.lit("H")).otherwise(F.lit("P")))
         .withColumn("created_ts", F.lit(_dt.datetime(2020, 1, 1)))
         .drop("t")
     )
