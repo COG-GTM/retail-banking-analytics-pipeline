@@ -75,3 +75,11 @@ def transaction_types(spark, rows):
 
 def bureau_scores(spark, rows):
     return make_df(spark, schemas.CUSTOMER_BUREAU_SCORES, rows)
+
+
+def stg_risk_factors(spark, rows):
+    return make_df(spark, schemas.STG_RISK_FACTORS, rows)
+
+
+def stg_customer_360(spark, rows):
+    return make_df(spark, schemas.STG_CUSTOMER_360, rows)
