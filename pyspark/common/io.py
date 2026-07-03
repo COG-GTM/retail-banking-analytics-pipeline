@@ -21,32 +21,13 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.types import (
-    DoubleType,
-    IntegerType,
-    LongType,
-    ShortType,
-    StructField,
-    StructType,
-)
+from pyspark.sql import functions as F
+from pyspark.sql.types import IntegerType, LongType, ShortType
 
 from . import schemas
 from .config import PipelineConfig
 
 _INT_TYPES = (ShortType, IntegerType, LongType)
-
-
-def _read_struct(spec: schemas.TableSpec) -> StructType:
-    """A lenient read schema: integer-family columns are widened to double so
-    float-formatted integers in the CSV fixtures (e.g. ``3.0``) parse instead of
-    becoming NULL under a strict integer schema. ``enforce_schema`` casts every
-    column back to its exact DDL type afterwards.
-    """
-    fields = []
-    for f in spec.struct.fields:
-        dtype = DoubleType() if isinstance(f.dataType, _INT_TYPES) else f.dataType
-        fields.append(StructField(f.name, dtype, True))
-    return StructType(fields)
 
 _SOURCE_SUBDIR = "01_source_tables"
 _STAGING_SUBDIR = "02_bteq_staging"
@@ -115,12 +96,15 @@ class LocalDataIO(DataIO):
         self.read_products_from_source = read_products_from_source
 
     def _read_csv(self, path: Path, spec: schemas.TableSpec) -> DataFrame:
-        raw = (
-            self.spark.read
-            .option("header", True)
-            .schema(_read_struct(spec))
-            .csv(str(path))
-        )
+        # Read every column as a string keyed by the CSV header (not positionally)
+        # so column order differences and extra columns in the committed fixtures
+        # are tolerated. Integer-family columns are widened via double first so
+        # float-formatted integers (e.g. "3.0") parse instead of becoming NULL;
+        # enforce_schema then projects onto the exact DDL columns + types by name.
+        raw = self.spark.read.option("header", True).csv(str(path))
+        for col in spec.columns:
+            if col.name in raw.columns and isinstance(col.dtype, _INT_TYPES):
+                raw = raw.withColumn(col.name, F.col(col.name).cast("double"))
         return schemas.enforce_schema(raw, spec)
 
     def read_source(self, table: str) -> DataFrame:
