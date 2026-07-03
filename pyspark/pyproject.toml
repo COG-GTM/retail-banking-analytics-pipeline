@@ -37,7 +37,9 @@ markers = [
     "e2e: full DAG end-to-end",
     "slow: long-running tests",
 ]
-addopts = "-ra"
+# Performance tier is slow + scale-dependent; deselected by default. Run it
+# explicitly with `pytest -m performance` (CLI -m overrides this default).
+addopts = "-ra -m 'not performance'"
 
 [tool.coverage.run]
 source = ["common", "jobs", "orchestration"]
