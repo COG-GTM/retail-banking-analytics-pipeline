@@ -10,6 +10,9 @@ requires-python = ">=3.10"
 dependencies = [
     "pyspark==3.5.1",
     "numpy==1.26.4",
+    # pyspark.ml (customer-segments clustering) imports distutils, removed from
+    # the stdlib in Python 3.12; setuptools restores it.
+    "setuptools>=69",
 ]
 
 [project.optional-dependencies]
