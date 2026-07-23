@@ -1,0 +1,5 @@
+# Runtime + test dependencies for the PySpark retail-banking analytics pipeline.
+# Pinned for reproducibility. PySpark 3.5.x runs on Java 11/17.
+pyspark==3.5.1
+delta-spark==3.2.0
+pytest==8.2.2
