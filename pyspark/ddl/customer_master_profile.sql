@@ -1,0 +1,35 @@
+-- Delta DDL for the golden record produced by pyspark/jobs/data_products.py.
+-- Unity Catalog three-level name; ${catalog}/${schema_dp} come from Config.
+-- (Illustrative Databricks DDL; local runs create the table via Delta writes.)
+CREATE TABLE IF NOT EXISTS ${catalog}.${schema_dp}.customer_master_profile (
+    customer_id             BIGINT      NOT NULL,
+    full_name               STRING,
+    age                     INT,
+    state_code              STRING,
+    customer_since          DATE,
+    tenure_months           INT,
+    customer_status         STRING,
+    segment_name            STRING,
+    lifetime_value_score    DECIMAL(10,2),
+    engagement_score        DECIMAL(5,2),
+    total_accounts          INT,
+    active_accounts         INT,
+    total_balance           DECIMAL(18,2),
+    total_credit_limit      DECIMAL(18,2),
+    credit_utilization_pct  DECIMAL(5,2),
+    monthly_transactions    INT,
+    monthly_spend           DECIMAL(18,2),
+    net_cash_flow           DECIMAL(18,2),
+    top_spend_category      STRING,
+    digital_txn_pct         DECIMAL(5,2),
+    composite_risk_score    DECIMAL(6,2),
+    risk_tier               STRING,
+    probability_of_default  DECIMAL(7,6),
+    watch_list_flag         STRING,
+    cross_sell_flag         STRING,
+    upsell_flag             STRING,
+    retention_risk_flag     STRING,
+    model_version           STRING,
+    effective_date          DATE,
+    load_ts                 TIMESTAMP
+) USING DELTA;
