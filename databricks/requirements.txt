@@ -1,0 +1,14 @@
+# Local development / CI dependencies for the Databricks migration.
+#
+# On Databricks these are provided by the runtime (DBR 14.3 LTS ships
+# Spark 3.5.x, Delta 3.x, numpy and pandas). They are pinned here so the
+# transformation logic can be unit/e2e tested locally with a real Spark
+# session that mirrors the cluster behaviour.
+# setuptools provides the ``distutils`` shim that pyspark.ml needs on Python 3.12+.
+setuptools>=68
+pyspark==3.5.3
+delta-spark==3.2.1
+numpy==1.26.4
+pandas==2.2.3
+pytest==8.3.3
+pytest-cov==5.0.0

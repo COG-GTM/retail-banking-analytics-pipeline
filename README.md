@@ -4,7 +4,51 @@ An end-to-end data engineering demo showing **Teradata BTEQ** scripts transformi
 operational tables into staging datasets, which then flow into **SAS** analytical
 pipelines, producing a final set of certified **data product** tables.
 
-## Architecture
+> ## ⚡ Modernized to Databricks
+>
+> This pipeline has been migrated off Teradata BTEQ + SAS 9.4 onto **Databricks**
+> (Delta Lake, PySpark, Spark MLlib, Unity Catalog, Databricks Workflows). The
+> Databricks-native implementation lives under **[`databricks/`](databricks/)**;
+> the legacy Teradata/SAS assets below are retained for reference.
+>
+> - **[`MIGRATION.md`](MIGRATION.md)** — 10 migration tickets with inputs/outputs,
+>   implementation, validation, and status.
+> - **[`databricks/README.md`](databricks/README.md)** — how to run it locally and
+>   deploy the Asset Bundle on Databricks.
+>
+> ### Databricks architecture
+>
+> ```
+>  Unity Catalog: retail_banking_analytics
+>  ─────────────────────────────────────────────────────────────────────────────
+>  core_banking / txn_processing        etl_staging (Delta)        data_products (Delta)
+>  (source Delta tables)                 ===============            ===============
+>
+>  customers, accounts, addresses ─▶ stg_customer_360 ─▶ customer_segments  (KMeans k=5)
+>  transactions, transaction_types ─▶ stg_txn_summary ─▶ transaction_analytics (percent_rank/IQR)
+>  + customer_bureau_scores        ─▶ stg_risk_factors ─▶ customer_risk_scores  (LogisticRegression)
+>                                                       └▶ customer_master_profile (4-way join)
+> ```
+>
+> | Legacy | Databricks |
+> |--------|------------|
+> | `CORE_BANKING_DB` / `TXN_PROCESSING_DB` / `ETL_STAGING_DB` / `DATA_PRODUCTS_DB` | Unity Catalog schemas `core_banking` / `txn_processing` / `etl_staging` / `data_products` |
+> | Teradata DDL | Delta `CREATE TABLE` (`transaction_analytics` partitioned by `reporting_period`) |
+> | BTEQ `QUALIFY ROW_NUMBER` / work tables | PySpark `Window` / cached DataFrames |
+> | SAS `PROC STDIZE`+`FASTCLUS` / `RANK`+`MEANS` / `LOGISTIC` | Spark MLlib `StandardScaler`+`KMeans` / `percent_rank`+`approxQuantile` / `LogisticRegression` |
+> | `pipeline_config.cfg` + `{SAS004}` creds | widgets/job params + Databricks Secrets |
+> | `%log_step` / `%validate_table` | Delta audit log + `validate_dataframe` (raises) |
+> | `run_full_pipeline.sh` + BTEQ/SAS shells | Databricks Asset Bundle job (tickets 4→10) |
+>
+> `export_data.py` (a DuckDB/scikit-learn local data generator) is intentionally
+> **not** migrated.
+>
+> ---
+>
+> _The remainder of this document describes the original **legacy** Teradata/SAS
+> pipeline._
+
+## Architecture (legacy Teradata + SAS)
 
 ```
  SOURCE TABLES (Teradata)           BTEQ STAGING              SAS ANALYTICS              DATA PRODUCTS

@@ -1,0 +1,85 @@
+# Databricks Workflow wiring tickets 4-10 in dependency order (Ticket 10).
+#
+#   setup ─> stg_customer_360 ─┬─> stg_txn_summary ─> transaction_analytics ─┐
+#                              ├─> stg_risk_factors ─> customer_risk_scores ──┤
+#                              └─> customer_segments ────────────────────────┴─> master_profile
+#
+# Shared job parameters (catalog / min_rows / run_date) flow to every task's
+# notebook widgets; the notebooks call the shared logging + validation from ticket 3.
+resources:
+  jobs:
+    retail_banking_pipeline:
+      name: retail_banking_analytics_pipeline
+      tags:
+        pipeline: retail_banking_analytics
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: min_rows
+          default: ${var.min_rows}
+        - name: run_date
+          default: ""
+      job_clusters:
+        - job_cluster_key: pipeline_cluster
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: Standard_DS3_v2
+            num_workers: 2
+            data_security_mode: SINGLE_USER
+      tasks:
+        - task_key: setup_unity_catalog
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/00_setup_unity_catalog.py
+
+        - task_key: stg_customer_360
+          job_cluster_key: pipeline_cluster
+          depends_on:
+            - task_key: setup_unity_catalog
+          notebook_task:
+            notebook_path: ../notebooks/04_stg_customer_360.py
+
+        - task_key: stg_txn_summary
+          job_cluster_key: pipeline_cluster
+          depends_on:
+            - task_key: stg_customer_360
+          notebook_task:
+            notebook_path: ../notebooks/05_stg_txn_summary.py
+
+        - task_key: stg_risk_factors
+          job_cluster_key: pipeline_cluster
+          depends_on:
+            - task_key: stg_customer_360
+          notebook_task:
+            notebook_path: ../notebooks/06_stg_risk_factors.py
+
+        - task_key: customer_segments
+          job_cluster_key: pipeline_cluster
+          depends_on:
+            - task_key: stg_customer_360
+          notebook_task:
+            notebook_path: ../notebooks/07_customer_segments.py
+
+        - task_key: transaction_analytics
+          job_cluster_key: pipeline_cluster
+          depends_on:
+            - task_key: stg_txn_summary
+          notebook_task:
+            notebook_path: ../notebooks/08_transaction_analytics.py
+
+        - task_key: customer_risk_scores
+          job_cluster_key: pipeline_cluster
+          depends_on:
+            - task_key: stg_risk_factors
+            - task_key: stg_customer_360
+          notebook_task:
+            notebook_path: ../notebooks/09_customer_risk_scores.py
+
+        - task_key: master_profile
+          job_cluster_key: pipeline_cluster
+          depends_on:
+            - task_key: customer_segments
+            - task_key: transaction_analytics
+            - task_key: customer_risk_scores
+          notebook_task:
+            notebook_path: ../notebooks/10_master_profile.py
