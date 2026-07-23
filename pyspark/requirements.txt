@@ -1,0 +1,7 @@
+pyspark==3.5.3
+delta-spark==3.2.1
+pytest==8.3.3
+pandas==2.2.3
+# Python 3.12 removed the stdlib `distutils`; setuptools restores it for
+# PySpark 3.5's pandas conversion path.
+setuptools==75.6.0
