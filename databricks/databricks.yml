@@ -1,0 +1,32 @@
+# Databricks Asset Bundle for the retail banking analytics pipeline (Ticket 10).
+#
+# Replaces the shell orchestrators (orchestration/run_full_pipeline.sh,
+# bteq/run_bteq_pipeline.sh, sas/run_sas_pipeline.sh) with a deployable
+# Databricks Workflow. Deploy/run with the Databricks CLI:
+#
+#     databricks bundle deploy  -t dev
+#     databricks bundle run retail_banking_pipeline -t dev
+bundle:
+  name: retail_banking_analytics
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog for all schemas/tables.
+    default: retail_banking_analytics
+  min_rows:
+    description: Minimum row-count threshold enforced by validation.
+    default: "1000"
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: ${workspace.host}
+  prod:
+    mode: production
+    workspace:
+      host: ${workspace.host}
