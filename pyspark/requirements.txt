@@ -1,0 +1,9 @@
+# Databricks-shaped local stack for the retail-banking analytics pipeline.
+# Production target is Databricks (Delta Lake + Unity Catalog); locally we use
+# pip-installed PySpark + delta-spark writing Delta tables to a local warehouse.
+pyspark==3.5.3
+delta-spark==3.2.1
+# distutils shim for PySpark 3.5 <-> Python 3.12 (toPandas, etc.)
+setuptools>=69
+pytest==8.3.4
+pytest-cov==5.0.0
