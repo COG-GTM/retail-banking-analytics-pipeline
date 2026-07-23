@@ -1,0 +1,68 @@
+# Databricks Asset Bundle for the Retail Banking Analytics Pipeline.
+#
+# Wires the Config contract to a Databricks Workflow: catalog/schema names and run
+# parameters are passed as job parameters (surfaced to jobs via dbutils.widgets and
+# read by pyspark.common.config.get_config), and the secret scope holds the
+# migrated Teradata / external-source credentials (read via get_secret ->
+# dbutils.secrets.get). No credentials or catalog/schema literals live in code.
+#
+# Deploy:  databricks bundle deploy -t dev
+# Run:     databricks bundle run retail_banking_pipeline -t dev
+#
+# Create the secret scope + keys once per workspace (values NOT stored here):
+#   databricks secrets create-scope retail_banking
+#   databricks secrets put-secret  retail_banking td_password
+bundle:
+  name: retail-banking-analytics-pipeline
+
+variables:
+  catalog:
+    description: Unity Catalog name
+    default: retail_banking
+  secret_scope:
+    description: Databricks secret scope holding pipeline credentials
+    default: retail_banking
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      catalog: retail_banking
+  prod:
+    mode: production
+    variables:
+      catalog: retail_banking
+
+resources:
+  jobs:
+    retail_banking_pipeline:
+      name: retail-banking-analytics-pipeline
+      # Job parameters map 1:1 onto Config fields. get_config() reads each via
+      # dbutils.widgets.get(<field>) with PIPELINE_<FIELD> env-var fallback locally.
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema_core
+          default: core_banking
+        - name: schema_txn
+          default: txn_processing
+        - name: schema_stg
+          default: etl_staging
+        - name: schema_dp
+          default: data_products
+        - name: lookback_months
+          default: "12"
+        - name: risk_score_threshold
+          default: "700"
+        - name: run_date
+          default: "{{job.trigger.time.iso_date}}"
+        - name: log_level
+          default: INFO
+        - name: secret_scope
+          default: ${var.secret_scope}
+      tasks:
+        - task_key: config_smoke
+          # Placeholder task; real pipeline tasks (jobs/*) are added by their tickets.
+          notebook_task:
+            notebook_path: ../orchestration/local_runner.py
