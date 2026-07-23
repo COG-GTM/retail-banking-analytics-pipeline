@@ -1,0 +1,115 @@
+# Databricks Asset Bundle -- retail banking analytics pipeline.
+# Replaces the legacy bash orchestrators (run_full_pipeline.sh,
+# run_bteq_pipeline.sh, run_sas_pipeline.sh). Wires every job as a task with
+# depends_on in the same DAG defined in orchestration/pipeline.py.
+# Deploy/run with: databricks bundle deploy && databricks bundle run \
+#   retail_banking_analytics_pipeline
+bundle:
+  name: retail-banking-analytics-pipeline
+variables:
+  catalog:
+    description: Unity Catalog name
+    default: retail_banking
+  run_date:
+    description: Logical run date (YYYY-MM-DD)
+    default: ''
+resources:
+  jobs:
+    retail_banking_analytics_pipeline:
+      name: retail_banking_analytics_pipeline
+      tags:
+        pipeline: retail-banking-analytics
+        migrated_from: bteq+sas
+      job_clusters:
+      - job_cluster_key: pipeline_cluster
+        new_cluster:
+          spark_version: 15.4.x-scala2.12
+          node_type_id: Standard_DS3_v2
+          num_workers: 2
+          spark_conf:
+            spark.databricks.delta.preview.enabled: 'true'
+      parameters:
+      - name: catalog
+        default: ${var.catalog}
+      - name: run_date
+        default: ${var.run_date}
+      tasks:
+      - task_key: create_delta_tables
+        job_cluster_key: pipeline_cluster
+        spark_python_task:
+          python_file: ${workspace.file_path}/orchestration/run_job.py
+          parameters:
+          - --job
+          - create_delta_tables
+      - task_key: stg_customer_360
+        job_cluster_key: pipeline_cluster
+        spark_python_task:
+          python_file: ${workspace.file_path}/orchestration/run_job.py
+          parameters:
+          - --job
+          - stg_customer_360
+        depends_on:
+        - task_key: create_delta_tables
+      - task_key: stg_txn_summary
+        job_cluster_key: pipeline_cluster
+        spark_python_task:
+          python_file: ${workspace.file_path}/orchestration/run_job.py
+          parameters:
+          - --job
+          - stg_txn_summary
+        depends_on:
+        - task_key: create_delta_tables
+      - task_key: stg_risk_factors
+        job_cluster_key: pipeline_cluster
+        spark_python_task:
+          python_file: ${workspace.file_path}/orchestration/run_job.py
+          parameters:
+          - --job
+          - stg_risk_factors
+        depends_on:
+        - task_key: create_delta_tables
+      - task_key: customer_segments
+        job_cluster_key: pipeline_cluster
+        spark_python_task:
+          python_file: ${workspace.file_path}/orchestration/run_job.py
+          parameters:
+          - --job
+          - customer_segments
+        depends_on:
+        - task_key: stg_customer_360
+      - task_key: txn_analytics
+        job_cluster_key: pipeline_cluster
+        spark_python_task:
+          python_file: ${workspace.file_path}/orchestration/run_job.py
+          parameters:
+          - --job
+          - txn_analytics
+        depends_on:
+        - task_key: stg_txn_summary
+      - task_key: risk_scoring
+        job_cluster_key: pipeline_cluster
+        spark_python_task:
+          python_file: ${workspace.file_path}/orchestration/run_job.py
+          parameters:
+          - --job
+          - risk_scoring
+        depends_on:
+        - task_key: stg_risk_factors
+      - task_key: data_products
+        job_cluster_key: pipeline_cluster
+        spark_python_task:
+          python_file: ${workspace.file_path}/orchestration/run_job.py
+          parameters:
+          - --job
+          - data_products
+        depends_on:
+        - task_key: customer_segments
+        - task_key: txn_analytics
+        - task_key: risk_scoring
+        - task_key: stg_customer_360
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production

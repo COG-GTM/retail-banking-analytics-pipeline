@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.delta-warehouse/
+.pytest_cache/
+spark-warehouse/
+metastore_db/
+derby.log
