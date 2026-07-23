@@ -1,0 +1,10 @@
+# Runtime + test dependencies for the PySpark/Delta retail-banking pipeline.
+# Pinned for reproducibility (Rule R4). PySpark 3.5.x supports Java 11/17;
+# delta-spark 3.2.x is the matching Delta Lake release for Spark 3.5.x.
+pyspark==3.5.3
+delta-spark==3.2.1
+# distutils was removed from the stdlib in Python 3.12; some pyspark modules
+# still import it, so setuptools must provide it.
+setuptools>=69
+pytest==8.2.2
+pytest-cov==5.0.0
