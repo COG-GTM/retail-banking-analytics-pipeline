@@ -1,0 +1,8 @@
+# Runtime + test dependencies for the PySpark retail-banking analytics pipeline.
+# Pinned for reproducibility (Providence rule R4). PySpark 3.5.x supports Java 11/17.
+pyspark==3.5.3
+delta-spark==3.2.1
+# pyspark.ml imports distutils, removed in Python 3.12; setuptools vendors it.
+setuptools==75.8.0
+numpy==1.26.4
+pytest==8.2.2
