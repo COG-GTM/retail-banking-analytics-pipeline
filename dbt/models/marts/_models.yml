@@ -209,3 +209,91 @@ models:
         description: Date the row was produced.
       - name: LOAD_TS
         description: Timestamp the row was materialized.
+
+  - name: customer_master_profile
+    description: >
+      Golden record: one row per active customer combining base attributes with
+      the segment, transaction and risk data products. Replaces
+      sas/04_sas_data_products.sas, whose four-way data-step MERGE keyed on
+      CUSTOMER_ID with `if _base` becomes LEFT JOINs from stg_customer_360
+      filtered to CUSTOMER_STATUS = 'A'. Missing-source defaults are preserved:
+      UNCLASSIFIED and zeros for unsegmented customers, zeros and an empty
+      category for customers with no current-period transactions, and UNKNOWN
+      with a NULL score for unscored customers. The ref() dependencies make dbt
+      build this model after all three marts. The column contract is
+      DATA_PRODUCTS_DB.CUSTOMER_MASTER_PROFILE in ddl/02_data_product_tables.sql.
+    columns:
+      - name: CUSTOMER_ID
+        description: Customer surrogate key; primary index of the table.
+        data_tests:
+          - not_null
+          - unique
+      - name: FULL_NAME
+        description: First and last name concatenated.
+        data_tests:
+          - not_null
+      - name: AGE
+        description: Age in whole years.
+      - name: STATE_CODE
+        description: State of the most recent HOME address.
+      - name: CUSTOMER_SINCE
+        description: Relationship start date.
+      - name: TENURE_MONTHS
+        description: Whole months since the relationship started.
+      - name: CUSTOMER_STATUS
+        description: Always 'A'; the profile covers active customers only.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['A']
+      - name: SEGMENT_NAME
+        description: "Segment label, or UNCLASSIFIED when the customer has no segment row."
+      - name: LIFETIME_VALUE_SCORE
+        description: LTV heuristic from customer_segments; 0 when unsegmented.
+      - name: ENGAGEMENT_SCORE
+        description: Engagement heuristic from customer_segments; 0 when unsegmented.
+      - name: TOTAL_ACCOUNTS
+        description: Accounts held by the customer.
+      - name: ACTIVE_ACCOUNTS
+        description: Open accounts held by the customer.
+      - name: TOTAL_BALANCE
+        description: Sum of balances across accounts.
+      - name: TOTAL_CREDIT_LIMIT
+        description: Sum of credit limits across credit accounts.
+      - name: CREDIT_UTILIZATION_PCT
+        description: Credit balance over credit limit, as a percentage.
+      - name: MONTHLY_TRANSACTIONS
+        description: Current-period transaction count; 0 when there is no activity.
+      - name: MONTHLY_SPEND
+        description: Current-period debit dollars; 0 when there is no activity.
+      - name: NET_CASH_FLOW
+        description: Current-period credits minus debits; 0 when there is no activity.
+      - name: TOP_SPEND_CATEGORY
+        description: Highest-spend merchant category; empty when there is no activity.
+      - name: DIGITAL_TXN_PCT
+        description: Digital share of transactions; 0 when there is no activity.
+      - name: COMPOSITE_RISK_SCORE
+        description: Composite risk score; NULL when the customer is unscored.
+      - name: RISK_TIER
+        description: "Risk tier, or UNKNOWN when the customer is unscored."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['LOW', 'MODERATE', 'ELEVATED', 'HIGH', 'CRITICAL', 'UNKNOWN']
+      - name: PROBABILITY_OF_DEFAULT
+        description: Modelled default probability; NULL when the customer is unscored.
+      - name: WATCH_LIST_FLAG
+        description: "Y when the customer is on the risk watch list."
+      - name: CROSS_SELL_FLAG
+        description: "Y when the customer is cross-sell eligible."
+      - name: UPSELL_FLAG
+        description: "Y when the customer is upsell eligible."
+      - name: RETENTION_RISK_FLAG
+        description: "Y when the customer is a retention risk."
+      - name: MODEL_VERSION
+        description: Version stamp from the master_model_version var.
+      - name: EFFECTIVE_DATE
+        description: Date the row was produced.
+      - name: LOAD_TS
+        description: Timestamp the row was materialized.
