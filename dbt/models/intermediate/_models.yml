@@ -1,0 +1,63 @@
+version: 2
+
+models:
+
+  - name: int_daily_balance
+    description: >
+      End-of-day balance per account for the last three months, taken from the
+      RUNNING_BALANCE of the last posted transaction of each day. Replaces the
+      WRK_DAILY_BALANCE work table that bteq/03_stg_risk_factors.bteq created
+      and dropped by hand; dbt rebuilds it as part of the DAG instead.
+    columns:
+      - name: CUSTOMER_ID
+        description: Owning customer.
+        data_tests:
+          - not_null
+      - name: ACCOUNT_ID
+        description: Account the balance belongs to.
+        data_tests:
+          - not_null
+      - name: TRANSACTION_DATE
+        description: Balance date.
+        data_tests:
+          - not_null
+      - name: EOD_BALANCE
+        description: Running balance after the last posted transaction of the day.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - ACCOUNT_ID
+              - TRANSACTION_DATE
+
+  - name: int_payment_history
+    description: >
+      Payment counts per credit/loan account over the last 24 months, with
+      on-time versus late classification against the account anniversary
+      due-date proxy. Replaces the WRK_PAYMENT_HISTORY work table from
+      bteq/03_stg_risk_factors.bteq.
+    columns:
+      - name: CUSTOMER_ID
+        description: Owning customer.
+        data_tests:
+          - not_null
+      - name: ACCOUNT_ID
+        description: Credit or loan account.
+        data_tests:
+          - not_null
+      - name: TOTAL_PAYMENTS
+        description: Count of payment transactions in the window.
+      - name: ONTIME_PAYMENTS
+        description: Payments posted on or before the due-date proxy.
+      - name: LATE_PAYMENTS
+        description: Payments posted after the due-date proxy.
+      - name: MONTHS_SINCE_LAST_LATE
+        description: >
+          Months since the most recent late payment, falling back to months
+          since the account opened when there are none.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - CUSTOMER_ID
+              - ACCOUNT_ID
