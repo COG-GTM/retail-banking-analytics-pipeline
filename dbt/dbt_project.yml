@@ -1,0 +1,43 @@
+name: 'retail_banking_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'retail_banking_analytics'
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+analysis-paths: ["analyses"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Run parameters previously defined in config/pipeline_config.cfg
+vars:
+  # LOOKBACK_MONTHS - transaction summary lookback window
+  lookback_months: 12
+  # RISK_SCORE_THRESHOLD - bureau score cut-off used by risk scoring
+  risk_score_threshold: 700
+
+models:
+  retail_banking_analytics:
+    +materialized: table
+    staging:
+      # ETL_STAGING_DB - previously populated by the BTEQ scripts
+      +schema: "{{ env_var('DBT_SCHEMA_STAGING', 'ETL_STAGING_DB') }}"
+      +tags: ['staging']
+    intermediate:
+      +schema: "{{ env_var('DBT_SCHEMA_STAGING', 'ETL_STAGING_DB') }}"
+      +tags: ['intermediate']
+    marts:
+      # DATA_PRODUCTS_DB - certified data products consumed downstream
+      +schema: "{{ env_var('DBT_SCHEMA_MARTS', 'DATA_PRODUCTS_DB') }}"
+      +tags: ['marts']
+
+seeds:
+  retail_banking_analytics:
+    +schema: "{{ env_var('DBT_SCHEMA_STAGING', 'ETL_STAGING_DB') }}"
