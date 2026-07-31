@@ -43,3 +43,36 @@ seeds:
         description: Version stamp of the clustering model that produced the row.
       - name: SCORED_AT
         description: Timestamp of the scoring run; the latest row per customer wins.
+
+  - name: customer_default_probabilities
+    description: >
+      Hand-off table between dbt and the probability-of-default model that
+      replaced SAS PROC LOGISTIC. dbt owns the table definition; the scoring job
+      owns the contents. Two supported ways to populate it:
+
+        (a) In-database: run
+            `dbt run-operation run_td_glm_default_scores` after
+            int_customer_risk_features is built. The macro fits a binomial
+            TD_GLM and overwrites this table.
+
+        (b) External scoring job: any process writes one row per scored
+            customer and the refreshed CSV is loaded with `dbt seed`.
+
+      customer_risk_scores left joins this table and defaults unscored
+      customers to 0, mirroring the SAS coalesce(PROB_DEFAULT, 0).
+    config:
+      quote_columns: true
+      column_types:
+        CUSTOMER_ID: BIGINT
+        PROBABILITY_OF_DEFAULT: DECIMAL(7,6)
+        MODEL_VERSION: VARCHAR(20)
+        SCORED_AT: TIMESTAMP(6)
+    columns:
+      - name: CUSTOMER_ID
+        description: Scored customer; matches int_customer_risk_features.
+      - name: PROBABILITY_OF_DEFAULT
+        description: Modelled 12-month default probability, 0 to 1.
+      - name: MODEL_VERSION
+        description: Version stamp of the scoring model that produced the row.
+      - name: SCORED_AT
+        description: Timestamp of the scoring run; the latest row per customer wins.

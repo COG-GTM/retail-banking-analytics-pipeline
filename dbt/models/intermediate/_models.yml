@@ -101,3 +101,28 @@ models:
         description: Standardized account ratio clustering input.
       - name: STD_AGE
         description: Standardized age clustering input.
+
+  - name: int_customer_risk_features
+    description: >
+      Risk features for active customers: staging risk factors joined to
+      customer attributes, bureau score imputed to 680 when missing or
+      non-positive and rescaled to 0-100, plus the balance trend ratio, the
+      velocity ratio and the DEFAULT_FLAG training target. Ports steps 1 and 2
+      of sas/03_sas_risk_scoring.sas and is the input contract for the
+      probability-of-default scoring step.
+    columns:
+      - name: CUSTOMER_ID
+        description: Active customer; primary index of the table.
+        data_tests:
+          - not_null
+          - unique
+      - name: EXTERNAL_CREDIT_SCORE
+        description: Bureau score after imputation.
+      - name: BUREAU_SCORE_NORM
+        description: Bureau score rescaled from 300-850 onto 0-100.
+      - name: BALANCE_TREND_RATIO
+        description: 30-day average balance over the 90-day average; 1 when unavailable.
+      - name: VELOCITY_RATIO
+        description: 7-day debit velocity at a 30-day pace over the 30-day velocity.
+      - name: DEFAULT_FLAG
+        description: "Training target proxy: 1 when more than two late payments."
