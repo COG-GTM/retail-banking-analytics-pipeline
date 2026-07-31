@@ -1,0 +1,225 @@
+version: 2
+
+sources:
+
+  - name: core_banking
+    description: >
+      Operational customer/account data owned by the core banking platform
+      (CORE_BANKING_DB). Read-only for this project.
+    schema: "{{ env_var('DBT_SCHEMA_CORE', 'CORE_BANKING_DB') }}"
+    loaded_at_field: UPDATED_TS
+    freshness:
+      warn_after: {count: 12, period: hour}
+      error_after: {count: 36, period: hour}
+
+    tables:
+
+      - name: CUSTOMERS
+        description: Master customer record from the core banking platform.
+        columns:
+          - name: CUSTOMER_ID
+            description: Surrogate key for the customer (BIGINT).
+            data_tests:
+              - not_null
+              - unique
+          - name: FIRST_NAME
+            description: Customer given name.
+          - name: LAST_NAME
+            description: Customer family name.
+          - name: DATE_OF_BIRTH
+            description: Date of birth, used to derive AGE.
+          - name: SSN_HASH
+            description: SHA-256 hash of the SSN (PII-masked).
+          - name: EMAIL
+            description: Primary email address.
+          - name: PHONE_PRIMARY
+            description: Primary contact phone number.
+          - name: CUSTOMER_SINCE
+            description: Relationship start date, used to derive TENURE_MONTHS.
+          - name: CUSTOMER_STATUS
+            description: "A=Active, I=Inactive, C=Closed."
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['A', 'I', 'C']
+          - name: SEGMENT_CODE
+            description: Segment code assigned by the source system.
+          - name: BRANCH_ID
+            description: Home branch identifier.
+          - name: CREATED_TS
+            description: Source row creation timestamp.
+          - name: UPDATED_TS
+            description: Source row last-update timestamp (freshness field).
+
+      - name: ACCOUNTS
+        description: Account-level detail (checking, savings, credit, loan).
+        columns:
+          - name: ACCOUNT_ID
+            description: Surrogate key for the account (BIGINT).
+            data_tests:
+              - not_null
+              - unique
+          - name: CUSTOMER_ID
+            description: Owning customer.
+            data_tests:
+              - not_null
+          - name: ACCOUNT_TYPE
+            description: "CHECKING, SAVINGS, CREDIT or LOAN."
+          - name: ACCOUNT_STATUS
+            description: "O=Open, C=Closed, F=Frozen."
+          - name: OPEN_DATE
+            description: Account opening date.
+          - name: CLOSE_DATE
+            description: Account closure date, NULL while open.
+          - name: CURRENT_BALANCE
+            description: Current ledger balance.
+          - name: AVAILABLE_BALANCE
+            description: Balance available for withdrawal.
+          - name: CREDIT_LIMIT
+            description: Approved credit limit (CREDIT accounts).
+          - name: INTEREST_RATE
+            description: Nominal interest rate.
+          - name: BRANCH_ID
+            description: Servicing branch identifier.
+          - name: CREATED_TS
+            description: Source row creation timestamp.
+          - name: UPDATED_TS
+            description: Source row last-update timestamp (freshness field).
+
+      - name: ADDRESSES
+        description: Customer mailing and residential addresses (SCD type 2).
+        columns:
+          - name: ADDRESS_ID
+            description: Surrogate key for the address record (BIGINT).
+            data_tests:
+              - not_null
+              - unique
+          - name: CUSTOMER_ID
+            description: Owning customer.
+            data_tests:
+              - not_null
+          - name: ADDRESS_TYPE
+            description: "MAIL, HOME or WORK."
+          - name: ADDRESS_LINE_1
+            description: First address line.
+          - name: ADDRESS_LINE_2
+            description: Second address line, may be NULL.
+          - name: CITY
+            description: City name.
+          - name: STATE_CODE
+            description: Two-character state code.
+          - name: ZIP_CODE
+            description: Postal code.
+          - name: COUNTRY_CODE
+            description: ISO country code, defaults to US.
+          - name: IS_PRIMARY
+            description: "Y when this is the customer's primary address."
+          - name: EFFECTIVE_DATE
+            description: SCD2 effective date; latest row wins.
+          - name: EXPIRATION_DATE
+            description: SCD2 expiration date, NULL while current.
+          - name: CREATED_TS
+            description: Source row creation timestamp.
+          - name: UPDATED_TS
+            description: Source row last-update timestamp (freshness field).
+
+      - name: CUSTOMER_BUREAU_SCORES
+        description: >
+          External credit bureau scores, one row per customer per report date.
+          Not present in ddl/00_source_tables.sql; column list is derived from
+          the lookup in bteq/03_stg_risk_factors.bteq and the extract in
+          data/01_source_tables/customer_bureau_scores.csv.
+        loaded_at_field: "CAST(REPORT_DATE AS TIMESTAMP(0))"
+        freshness:
+          warn_after: {count: 7, period: day}
+          error_after: {count: 30, period: day}
+        columns:
+          - name: CUSTOMER_ID
+            description: Scored customer.
+            data_tests:
+              - not_null
+          - name: EXTERNAL_CREDIT_SCORE
+            description: Bureau score on the 300-850 scale.
+          - name: REPORT_DATE
+            description: Bureau report date; most recent row per customer is used.
+            data_tests:
+              - not_null
+        data_tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns:
+                  - CUSTOMER_ID
+                  - REPORT_DATE
+
+  - name: txn_processing
+    description: >
+      Transaction processing tables (TXN_PROCESSING_DB). Read-only for this
+      project.
+    schema: "{{ env_var('DBT_SCHEMA_TXN', 'TXN_PROCESSING_DB') }}"
+    loaded_at_field: CREATED_TS
+    freshness:
+      warn_after: {count: 6, period: hour}
+      error_after: {count: 24, period: hour}
+
+    tables:
+
+      - name: TRANSACTIONS
+        description: >
+          Individual financial transactions across all account types,
+          partitioned by TRANSACTION_DATE in the source system.
+        columns:
+          - name: TRANSACTION_ID
+            description: Surrogate key for the transaction (BIGINT).
+            data_tests:
+              - not_null
+              - unique
+          - name: ACCOUNT_ID
+            description: Account the transaction posted against.
+            data_tests:
+              - not_null
+          - name: TRANSACTION_TYPE_CD
+            description: Foreign key to TRANSACTION_TYPES.
+          - name: TRANSACTION_DATE
+            description: Posting date, drives all lookback windows.
+          - name: TRANSACTION_TS
+            description: Posting timestamp, used to pick the last txn of a day.
+          - name: AMOUNT
+            description: Signed transaction amount.
+          - name: RUNNING_BALANCE
+            description: Account balance after the transaction posted.
+          - name: MERCHANT_NAME
+            description: Merchant descriptor.
+          - name: MERCHANT_CATEGORY
+            description: Merchant category, used for top-category and risk logic.
+          - name: CHANNEL_CODE
+            description: "ATM, POS, WEB, MOB, ACH, WIRE."
+          - name: REFERENCE_NUM
+            description: Source system reference number.
+          - name: STATUS_CODE
+            description: "P=Posted, R=Reversed, H=Hold. Only P feeds analytics."
+          - name: CREATED_TS
+            description: Source row creation timestamp (freshness field).
+
+      - name: TRANSACTION_TYPES
+        description: Reference/lookup table for transaction type codes.
+        loaded_at_field: null
+        freshness: null
+        columns:
+          - name: TRANSACTION_TYPE_CD
+            description: Transaction type code (unique primary index).
+            data_tests:
+              - not_null
+              - unique
+          - name: DESCRIPTION
+            description: Human readable description; NSF fees matched on '%NSF%'.
+          - name: CATEGORY
+            description: "DEBIT, CREDIT, FEE or INTEREST."
+            data_tests:
+              - not_null
+          - name: IS_REVENUE
+            description: "Y when the transaction type generates revenue."
+          - name: EFFECTIVE_DATE
+            description: Code effective date.
+          - name: EXPIRATION_DATE
+            description: Code expiration date, NULL while active.
