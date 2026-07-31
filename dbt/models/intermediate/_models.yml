@@ -61,3 +61,43 @@ models:
             combination_of_columns:
               - CUSTOMER_ID
               - ACCOUNT_ID
+
+  - name: int_customer_segment_features
+    description: >
+      Segmentation features for active customers plus mean/standard-deviation
+      standardized copies of the six clustering inputs. Ports the feature
+      engineering and PROC STDIZE steps of sas/01_sas_customer_segments.sas and
+      is the documented input contract for the clustering step that runs outside
+      dbt (see customer_segments).
+    columns:
+      - name: CUSTOMER_ID
+        description: Active customer; primary index of the table.
+        data_tests:
+          - not_null
+          - unique
+      - name: PRODUCT_BREADTH
+        description: Share of the four product types held, 0 to 1.
+      - name: TENURE_GROUP
+        description: Tenure bucket.
+      - name: AGE_GROUP
+        description: Generational bucket.
+      - name: BALANCE_TIER
+        description: Balance bucket.
+      - name: DIGITAL_ADOPTION_SCORE
+        description: Placeholder carried over from the SAS program; always 0.
+      - name: LOG_BALANCE
+        description: Natural log of total balance, floored at 1.
+      - name: ACCT_RATIO
+        description: Active accounts over total accounts.
+      - name: STD_LOG_BALANCE
+        description: Standardized LOG_BALANCE clustering input.
+      - name: STD_TENURE_MONTHS
+        description: Standardized tenure clustering input.
+      - name: STD_CREDIT_UTILIZATION_PCT
+        description: Standardized credit utilization clustering input.
+      - name: STD_PRODUCT_BREADTH
+        description: Standardized product breadth clustering input.
+      - name: STD_ACCT_RATIO
+        description: Standardized account ratio clustering input.
+      - name: STD_AGE
+        description: Standardized age clustering input.

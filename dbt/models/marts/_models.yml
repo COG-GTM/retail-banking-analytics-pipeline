@@ -67,3 +67,79 @@ models:
         description: Date the row was produced.
       - name: LOAD_TS
         description: Timestamp the row was materialized.
+
+  - name: customer_segments
+    description: >
+      Behavioural customer segmentation data product for active customers.
+      Deterministic logic from sas/01_sas_customer_segments.sas is ported here
+      and in int_customer_segment_features: product breadth, tenure/age/balance
+      groupings, LOG_BALANCE, ACCT_RATIO, the LTV and engagement heuristics and
+      the cross-sell / upsell / retention-risk flags.
+
+      EXTERNAL SCORING BOUNDARY - the k-means step (SAS PROC FASTCLUS) has no
+      dbt SQL equivalent, so SEGMENT_ID, SEGMENT_NAME and SUBSEGMENT_ID are not
+      computed by this model. They are read from the customer_segment_assignments
+      hand-off table, which is populated either in-database by
+      `dbt run-operation run_td_kmeans_segments` (Teradata TD_KMeans /
+      TD_KMeansPredict, see macros/run_td_kmeans_segments.sql) or by an external
+      scoring job whose output is loaded with `dbt seed`. Customers with no
+      assignment are labelled UNCLASSIFIED with a NULL SEGMENT_ID, so the DAG
+      runs green before the first scoring pass; the row-level defaults, every
+      other column and the run order are unchanged from the SAS program.
+
+      The column contract is DATA_PRODUCTS_DB.CUSTOMER_SEGMENTS in
+      ddl/02_data_product_tables.sql.
+    columns:
+      - name: CUSTOMER_ID
+        description: Customer surrogate key; primary index of the table.
+        data_tests:
+          - not_null
+          - unique
+      - name: SEGMENT_NAME
+        description: "Cluster label from the scoring job, or UNCLASSIFIED when unscored."
+        data_tests:
+          - not_null
+      - name: SEGMENT_ID
+        description: Cluster number from the scoring job; NULL when unscored.
+      - name: SUBSEGMENT_ID
+        description: Reserved for sub-segmentation; 0 today.
+      - name: LIFETIME_VALUE_SCORE
+        description: "Heuristic: LOG_BALANCE x TENURE_MONTHS x PRODUCT_BREADTH x 10."
+      - name: ENGAGEMENT_SCORE
+        description: Active accounts as a percentage of all accounts.
+      - name: DIGITAL_ADOPTION_SCORE
+        description: Placeholder carried over from the SAS program; always 0.
+      - name: PRODUCT_BREADTH_INDEX
+        description: Share of the four product types held, as a percentage.
+      - name: TENURE_GROUP
+        description: "NEW (<1yr), DEVELOPING (1-3yr), ESTABLISHED (3-7yr) or LOYAL (7yr+)."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['NEW (<1yr)', 'DEVELOPING (1-3yr)', 'ESTABLISHED (3-7yr)', 'LOYAL (7yr+)']
+      - name: AGE_GROUP
+        description: "GEN_Z, MILLENNIAL, GEN_X, BOOMER or SILENT."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['GEN_Z', 'MILLENNIAL', 'GEN_X', 'BOOMER', 'SILENT']
+      - name: BALANCE_TIER
+        description: "LOW, MODERATE, AFFLUENT or HIGH_NET_WORTH."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['LOW', 'MODERATE', 'AFFLUENT', 'HIGH_NET_WORTH']
+      - name: CHANNEL_PREFERENCE
+        description: Placeholder carried over from the SAS program; empty string.
+      - name: CROSS_SELL_FLAG
+        description: "Y when product breadth is below 0.5 and account ratio is at least 0.75."
+      - name: UPSELL_FLAG
+        description: "Y for MODERATE balance customers past their first year."
+      - name: RETENTION_RISK_FLAG
+        description: "Y when account ratio is below 0.5 despite 60+ months of tenure."
+      - name: MODEL_VERSION
+        description: Version from the scoring job, falling back to the segment_model_version var.
+      - name: EFFECTIVE_DATE
+        description: Date the row was produced.
+      - name: LOAD_TS
+        description: Timestamp the row was materialized.

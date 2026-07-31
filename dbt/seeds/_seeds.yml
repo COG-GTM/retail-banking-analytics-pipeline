@@ -1,0 +1,45 @@
+version: 2
+
+seeds:
+
+  - name: customer_segment_assignments
+    description: >
+      Hand-off table between dbt and the k-means clustering step that replaced
+      SAS PROC FASTCLUS. dbt owns the table definition; the scoring job owns the
+      contents. Two supported ways to populate it:
+
+        (a) In-database: run
+            `dbt run-operation run_td_kmeans_segments` after
+            int_customer_segment_features is built. The macro calls Teradata
+            TD_KMeans / TD_KMeansPredict and overwrites this table.
+
+        (b) External scoring job: any process (Python, SAS, Vantage
+            Analytics) writes one row per scored customer and the refreshed CSV
+            is loaded with `dbt seed`.
+
+      customer_segments left joins this table, so unscored customers land as
+      UNCLASSIFIED rather than blocking the run.
+    config:
+      quote_columns: true
+      column_types:
+        CUSTOMER_ID: BIGINT
+        SEGMENT_ID: SMALLINT
+        SEGMENT_NAME: VARCHAR(40)
+        SUBSEGMENT_ID: SMALLINT
+        MODEL_VERSION: VARCHAR(20)
+        SCORED_AT: TIMESTAMP(6)
+    columns:
+      - name: CUSTOMER_ID
+        description: Scored customer; matches stg_customer_360.
+      - name: SEGMENT_ID
+        description: Cluster number returned by the clustering step.
+      - name: SEGMENT_NAME
+        description: >
+          Business label for the cluster, e.g. PREMIUM_WEALTH,
+          ENGAGED_MAINSTREAM, GROWING_DIGITAL, CREDIT_DEPENDENT, VALUE_BASIC.
+      - name: SUBSEGMENT_ID
+        description: Reserved for future sub-segmentation; 0 today.
+      - name: MODEL_VERSION
+        description: Version stamp of the clustering model that produced the row.
+      - name: SCORED_AT
+        description: Timestamp of the scoring run; the latest row per customer wins.
