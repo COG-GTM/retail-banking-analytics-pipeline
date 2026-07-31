@@ -1,0 +1,54 @@
+# =============================================================================
+# profiles.yml TEMPLATE - Retail Banking Analytics (dbt-teradata)
+# =============================================================================
+# Copy to ~/.dbt/profiles.yml, or run dbt with:
+#     dbt run --profiles-dir dbt
+#
+# Connection settings map 1:1 onto the values previously exported by
+# config/pipeline_config.cfg:
+#     TD_SERVER   -> host
+#     TD_USERNAME -> user
+#     TD_LOGMECH  -> logmech (LDAP)
+#     DB_STG      -> DBT_SCHEMA_STAGING (staging models / default schema)
+#     DB_DP       -> DBT_SCHEMA_MARTS   (mart models)
+#
+# TD_PASSWORD is NOT stored in the repo; it must be supplied by the runtime
+# environment (vault, CI secret, or the operator's shell).
+# =============================================================================
+
+retail_banking_analytics:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+  outputs:
+
+    dev:
+      type: teradata
+      host: "{{ env_var('TD_SERVER') }}"
+      user: "{{ env_var('TD_USERNAME') }}"
+      password: "{{ env_var('TD_PASSWORD') }}"
+      logmech: "{{ env_var('TD_LOGMECH', 'LDAP') }}"
+      schema: "{{ env_var('DBT_SCHEMA_STAGING', 'ETL_STAGING_DB') }}"
+      tmode: "{{ env_var('TD_TMODE', 'ANSI') }}"
+      threads: "{{ env_var('DBT_THREADS', '4') | int }}"
+      retries: 2
+
+    uat:
+      type: teradata
+      host: "{{ env_var('TD_SERVER') }}"
+      user: "{{ env_var('TD_USERNAME') }}"
+      password: "{{ env_var('TD_PASSWORD') }}"
+      logmech: "{{ env_var('TD_LOGMECH', 'LDAP') }}"
+      schema: "{{ env_var('DBT_SCHEMA_STAGING', 'ETL_STAGING_DB') }}"
+      tmode: "{{ env_var('TD_TMODE', 'ANSI') }}"
+      threads: "{{ env_var('DBT_THREADS', '4') | int }}"
+      retries: 2
+
+    prod:
+      type: teradata
+      host: "{{ env_var('TD_SERVER') }}"
+      user: "{{ env_var('TD_USERNAME') }}"
+      password: "{{ env_var('TD_PASSWORD') }}"
+      logmech: "{{ env_var('TD_LOGMECH', 'LDAP') }}"
+      schema: "{{ env_var('DBT_SCHEMA_STAGING', 'ETL_STAGING_DB') }}"
+      tmode: "{{ env_var('TD_TMODE', 'ANSI') }}"
+      threads: "{{ env_var('DBT_THREADS', '8') | int }}"
+      retries: 2
