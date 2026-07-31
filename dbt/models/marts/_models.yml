@@ -1,0 +1,69 @@
+version: 2
+
+models:
+
+  - name: transaction_analytics
+    description: >
+      Customer-level transaction behaviour for the current reporting period:
+      volumes, cash flow, revenue contribution, digital adoption, spend
+      percentile and spend anomaly flag. Replaces
+      sas/02_sas_txn_analytics.sas. PROC RANK groups=100 is reimplemented as
+      NTILE(100) - 1 and the PROC MEANS IQR outlier rule as PERCENTILE_CONT
+      bounds over the whole customer population. The column contract is
+      DATA_PRODUCTS_DB.TRANSACTION_ANALYTICS in ddl/02_data_product_tables.sql.
+    columns:
+      - name: CUSTOMER_ID
+        description: Customer surrogate key; primary index of the table.
+        data_tests:
+          - not_null
+          - unique
+      - name: REPORTING_PERIOD
+        description: "Reporting month as YYYY-MM; the table is partitioned on it."
+        data_tests:
+          - not_null
+      - name: TOTAL_ACCOUNTS
+        description: Distinct accounts with activity in the lookback window.
+      - name: ACTIVE_ACCOUNTS
+        description: Accounts transacted on within the last 30 days.
+      - name: TOTAL_TRANSACTIONS
+        description: Posted transaction count across all accounts.
+        data_tests:
+          - not_null
+      - name: TOTAL_DEBIT_AMT
+        description: Absolute debit dollars.
+      - name: TOTAL_CREDIT_AMT
+        description: Credit dollars.
+      - name: NET_CASH_FLOW
+        description: Credits minus debits.
+      - name: AVG_TRANSACTION_SIZE
+        description: Mean dollar size across debit and credit activity.
+      - name: MONTHLY_SPEND_TREND
+        description: "UP, DOWN or STABLE, from net cash flow versus 5x average size."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['UP', 'DOWN', 'STABLE']
+      - name: SPEND_PERCENTILE
+        description: "Debit-spend percentile bucket, 0-99 (PROC RANK groups=100 equivalent)."
+      - name: TOP_SPEND_CATEGORY
+        description: Highest-spend merchant category across the customer's accounts.
+      - name: DIGITAL_TXN_PCT
+        description: Transaction-weighted share of WEB and MOBILE activity.
+      - name: FEE_INCOME
+        description: Fee dollars collected.
+      - name: INTEREST_INCOME
+        description: Interest proxy, 2% of debit volume.
+      - name: REVENUE_CONTRIBUTION
+        description: Fee income plus interest income.
+      - name: ANOMALY_FLAG
+        description: "Y when debit spend exceeds median + 3 x IQR of the population."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Y', 'N']
+      - name: MODEL_VERSION
+        description: Version stamp from the txn_model_version var.
+      - name: EFFECTIVE_DATE
+        description: Date the row was produced.
+      - name: LOAD_TS
+        description: Timestamp the row was materialized.

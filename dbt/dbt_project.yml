@@ -22,6 +22,8 @@ vars:
   lookback_months: 12
   # RISK_SCORE_THRESHOLD - bureau score cut-off used by risk scoring
   risk_score_threshold: 700
+  # Model version stamped onto the data products (was a SAS %let)
+  txn_model_version: 'TXN_V2.1'
 
 models:
   retail_banking_analytics:
