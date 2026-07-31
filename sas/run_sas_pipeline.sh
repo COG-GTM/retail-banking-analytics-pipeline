@@ -1,5 +1,22 @@
 #!/bin/bash
 # =============================================================================
+# DEPRECATED - retained for reference only
+# =============================================================================
+# The SAS layer has been migrated to dbt. Use the dbt pipeline instead:
+#
+#   ./orchestration/run_full_pipeline.sh
+#   dbt run --select tag:marts
+#
+# The four SAS programs have been ported to dbt models under dbt/models/marts
+# (customer_segments, transaction_analytics, customer_risk_scores,
+# customer_master_profile). The PROC FASTCLUS and PROC LOGISTIC steps now run
+# through the scoring hand-offs described in dbt/seeds/_seeds.yml.
+#
+# This script is no longer part of the scheduled pipeline and will be removed
+# once the dbt cutover is complete.
+# =============================================================================
+
+# =============================================================================
 # SAS Pipeline Orchestrator
 # =============================================================================
 # Runs the four SAS programs in sequence. Each program reads from staging
@@ -13,6 +30,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/../config/pipeline_config.cfg"
+
+echo "WARNING: sas/run_sas_pipeline.sh is DEPRECATED. The SAS layer now runs through dbt;" >&2
+echo "         use ./orchestration/run_full_pipeline.sh instead." >&2
+if [ "${ALLOW_DEPRECATED_SAS:-false}" != "true" ]; then
+    echo "         Set ALLOW_DEPRECATED_SAS=true to run it anyway." >&2
+    exit 1
+fi
+
 
 mkdir -p "${LOG_DIR}/sas"
 

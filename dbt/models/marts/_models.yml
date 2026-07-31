@@ -11,6 +11,13 @@ models:
       NTILE(100) - 1 and the PROC MEANS IQR outlier rule as PERCENTILE_CONT
       bounds over the whole customer population. The column contract is
       DATA_PRODUCTS_DB.TRANSACTION_ANALYTICS in ddl/02_data_product_tables.sql.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1000
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "SPEND_PERCENTILE between 0 and 99"
     columns:
       - name: CUSTOMER_ID
         description: Customer surrogate key; primary index of the table.
@@ -89,6 +96,13 @@ models:
 
       The column contract is DATA_PRODUCTS_DB.CUSTOMER_SEGMENTS in
       ddl/02_data_product_tables.sql.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1000
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "LIFETIME_VALUE_SCORE >= 0"
     columns:
       - name: CUSTOMER_ID
         description: Customer surrogate key; primary index of the table.
@@ -164,6 +178,16 @@ models:
 
       The column contract is DATA_PRODUCTS_DB.CUSTOMER_RISK_SCORES in
       ddl/02_data_product_tables.sql.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1000
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "COMPOSITE_RISK_SCORE between 0 and 100"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "PROBABILITY_OF_DEFAULT between 0 and 1"
     columns:
       - name: CUSTOMER_ID
         description: Customer surrogate key; primary index of the table.
@@ -222,6 +246,13 @@ models:
       with a NULL score for unscored customers. The ref() dependencies make dbt
       build this model after all three marts. The column contract is
       DATA_PRODUCTS_DB.CUSTOMER_MASTER_PROFILE in ddl/02_data_product_tables.sql.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1000
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "ACTIVE_ACCOUNTS <= TOTAL_ACCOUNTS"
     columns:
       - name: CUSTOMER_ID
         description: Customer surrogate key; primary index of the table.

@@ -9,6 +9,13 @@ models:
       account portfolio metrics. Replaces bteq/01_stg_customer_360.bteq; the
       column contract is ETL_STAGING_DB.STG_CUSTOMER_360 in
       ddl/01_staging_tables.sql.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "NUM_ACTIVE_ACCOUNTS <= NUM_ACCOUNTS"
     columns:
       - name: CUSTOMER_ID
         description: Customer surrogate key; primary index of the table.
@@ -73,6 +80,18 @@ models:
       Replaces bteq/02_stg_txn_summary.bteq, including its VT_RUN_PARAMS
       volatile table, which is now a run_params CTE. The column contract is
       ETL_STAGING_DB.STG_TXN_SUMMARY in ddl/01_staging_tables.sql.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "TOTAL_TRANSACTIONS > 0"
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - CUSTOMER_ID
+              - ACCOUNT_ID
     columns:
       - name: CUSTOMER_ID
         description: Owning customer.
@@ -126,12 +145,6 @@ models:
         description: Days between the most recent transaction and today.
       - name: LOAD_TS
         description: Timestamp the row was materialized.
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - CUSTOMER_ID
-              - ACCOUNT_ID
 
   - name: stg_risk_factors
     description: >
@@ -141,6 +154,13 @@ models:
       merchant risk indicators. Replaces bteq/03_stg_risk_factors.bteq; the
       column contract is ETL_STAGING_DB.STG_RISK_FACTORS in
       ddl/01_staging_tables.sql.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "PAYMENT_ONTIME_PCT between 0 and 100"
     columns:
       - name: CUSTOMER_ID
         description: Customer surrogate key; primary index of the table.

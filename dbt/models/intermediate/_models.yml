@@ -8,6 +8,15 @@ models:
       RUNNING_BALANCE of the last posted transaction of each day. Replaces the
       WRK_DAILY_BALANCE work table that bteq/03_stg_risk_factors.bteq created
       and dropped by hand; dbt rebuilds it as part of the DAG instead.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - ACCOUNT_ID
+              - TRANSACTION_DATE
     columns:
       - name: CUSTOMER_ID
         description: Owning customer.
@@ -23,12 +32,6 @@ models:
           - not_null
       - name: EOD_BALANCE
         description: Running balance after the last posted transaction of the day.
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - ACCOUNT_ID
-              - TRANSACTION_DATE
 
   - name: int_payment_history
     description: >
@@ -36,6 +39,15 @@ models:
       on-time versus late classification against the account anniversary
       due-date proxy. Replaces the WRK_PAYMENT_HISTORY work table from
       bteq/03_stg_risk_factors.bteq.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - CUSTOMER_ID
+              - ACCOUNT_ID
     columns:
       - name: CUSTOMER_ID
         description: Owning customer.
@@ -55,12 +67,6 @@ models:
         description: >
           Months since the most recent late payment, falling back to months
           since the account opened when there are none.
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - CUSTOMER_ID
-              - ACCOUNT_ID
 
   - name: int_customer_segment_features
     description: >
@@ -69,6 +75,13 @@ models:
       engineering and PROC STDIZE steps of sas/01_sas_customer_segments.sas and
       is the documented input contract for the clustering step that runs outside
       dbt (see customer_segments).
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "PRODUCT_BREADTH between 0 and 1"
     columns:
       - name: CUSTOMER_ID
         description: Active customer; primary index of the table.
@@ -110,6 +123,13 @@ models:
       velocity ratio and the DEFAULT_FLAG training target. Ports steps 1 and 2
       of sas/03_sas_risk_scoring.sas and is the input contract for the
       probability-of-default scoring step.
+    data_tests:
+      - min_row_count:
+          arguments:
+            min_rows: 1
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "BUREAU_SCORE_NORM between 0 and 100"
     columns:
       - name: CUSTOMER_ID
         description: Active customer; primary index of the table.
