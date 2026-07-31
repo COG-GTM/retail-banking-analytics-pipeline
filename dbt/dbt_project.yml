@@ -26,6 +26,7 @@ vars:
   txn_model_version: 'TXN_V2.1'
   segment_model_version: 'SEG_V3.2'
   risk_model_version: 'RISK_V4.0'
+  master_model_version: 'MASTER_V1.5'
 
 models:
   retail_banking_analytics:
