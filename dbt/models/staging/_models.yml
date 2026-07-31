@@ -1,0 +1,67 @@
+version: 2
+
+models:
+
+  - name: stg_customer_360
+    description: >
+      Denormalized customer 360 view: one row per non-closed customer with
+      demographic attributes, the most recent HOME address, and aggregated
+      account portfolio metrics. Replaces bteq/01_stg_customer_360.bteq; the
+      column contract is ETL_STAGING_DB.STG_CUSTOMER_360 in
+      ddl/01_staging_tables.sql.
+    columns:
+      - name: CUSTOMER_ID
+        description: Customer surrogate key; primary index of the table.
+        data_tests:
+          - not_null
+          - unique
+      - name: FIRST_NAME
+        description: Customer given name.
+      - name: LAST_NAME
+        description: Customer family name.
+      - name: DATE_OF_BIRTH
+        description: Date of birth carried through from the source.
+      - name: AGE
+        description: Age in whole years, derived as (CURRENT_DATE - DOB) / 365.25.
+      - name: CUSTOMER_SINCE
+        description: Relationship start date.
+      - name: TENURE_MONTHS
+        description: Whole months between CUSTOMER_SINCE and today.
+      - name: CUSTOMER_STATUS
+        description: "A=Active or I=Inactive; closed customers are filtered out."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['A', 'I']
+      - name: SEGMENT_CODE
+        description: Segment code from the core banking platform.
+      - name: BRANCH_ID
+        description: Home branch identifier.
+      - name: PRIMARY_ADDRESS
+        description: Address line 1 concatenated with line 2 when present.
+      - name: CITY
+        description: City of the most recent HOME address.
+      - name: STATE_CODE
+        description: State of the most recent HOME address.
+      - name: ZIP_CODE
+        description: Postal code of the most recent HOME address.
+      - name: NUM_ACCOUNTS
+        description: Count of all accounts held by the customer.
+      - name: NUM_ACTIVE_ACCOUNTS
+        description: Count of accounts with ACCOUNT_STATUS = 'O'.
+      - name: HAS_CHECKING
+        description: "Y when the customer holds at least one CHECKING account."
+      - name: HAS_SAVINGS
+        description: "Y when the customer holds at least one SAVINGS account."
+      - name: HAS_CREDIT
+        description: "Y when the customer holds at least one CREDIT account."
+      - name: HAS_LOAN
+        description: "Y when the customer holds at least one LOAN account."
+      - name: TOTAL_BALANCE
+        description: Sum of CURRENT_BALANCE across all accounts.
+      - name: TOTAL_CREDIT_LIMIT
+        description: Sum of CREDIT_LIMIT across CREDIT accounts.
+      - name: CREDIT_UTILIZATION_PCT
+        description: Credit balance over credit limit, as a percentage; 0 when no limit.
+      - name: LOAD_TS
+        description: Timestamp the row was materialized.
