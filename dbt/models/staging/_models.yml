@@ -65,3 +65,70 @@ models:
         description: Credit balance over credit limit, as a percentage; 0 when no limit.
       - name: LOAD_TS
         description: Timestamp the row was materialized.
+
+  - name: stg_txn_summary
+    description: >
+      Transaction activity aggregated to one row per customer/account over the
+      lookback window defined by the lookback_months var (12 by default).
+      Replaces bteq/02_stg_txn_summary.bteq, including its VT_RUN_PARAMS
+      volatile table, which is now a run_params CTE. The column contract is
+      ETL_STAGING_DB.STG_TXN_SUMMARY in ddl/01_staging_tables.sql.
+    columns:
+      - name: CUSTOMER_ID
+        description: Owning customer.
+        data_tests:
+          - not_null
+      - name: ACCOUNT_ID
+        description: Account the metrics are aggregated over.
+        data_tests:
+          - not_null
+      - name: ACCOUNT_TYPE
+        description: "CHECKING, SAVINGS, CREDIT or LOAN."
+      - name: SUMMARY_PERIOD_START
+        description: Start of the lookback window, ADD_MONTHS(CURRENT_DATE, -lookback_months).
+      - name: SUMMARY_PERIOD_END
+        description: End of the lookback window, always the current date.
+      - name: TXN_COUNT_TOTAL
+        description: Count of posted transactions in the window.
+      - name: TXN_COUNT_DEBIT
+        description: Count of posted DEBIT-category transactions.
+      - name: TXN_COUNT_CREDIT
+        description: Count of posted CREDIT-category transactions.
+      - name: TXN_COUNT_FEE
+        description: Count of posted FEE-category transactions.
+      - name: AMT_TOTAL_DEBIT
+        description: Absolute dollar total of DEBIT transactions.
+      - name: AMT_TOTAL_CREDIT
+        description: Dollar total of CREDIT transactions.
+      - name: AMT_TOTAL_FEES
+        description: Absolute dollar total of FEE transactions.
+      - name: AMT_AVG_DEBIT
+        description: Mean absolute DEBIT amount; NULL when there are no debits.
+      - name: AMT_AVG_CREDIT
+        description: Mean CREDIT amount; NULL when there are no credits.
+      - name: AMT_MAX_SINGLE_DEBIT
+        description: Largest single absolute DEBIT amount.
+      - name: AMT_MAX_SINGLE_CREDIT
+        description: Largest single CREDIT amount.
+      - name: DISTINCT_MERCHANTS
+        description: Count of distinct merchant names transacted with.
+      - name: TOP_MERCHANT_CATEGORY
+        description: Merchant category with the highest absolute spend for the account.
+      - name: PCT_ATM
+        description: Share of transactions on the ATM channel, as a percentage.
+      - name: PCT_POS
+        description: Share of transactions on the POS channel, as a percentage.
+      - name: PCT_WEB
+        description: Share of transactions on the WEB channel, as a percentage.
+      - name: PCT_MOBILE
+        description: Share of transactions on the MOB channel, as a percentage.
+      - name: DAYS_SINCE_LAST_TXN
+        description: Days between the most recent transaction and today.
+      - name: LOAD_TS
+        description: Timestamp the row was materialized.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - CUSTOMER_ID
+              - ACCOUNT_ID
