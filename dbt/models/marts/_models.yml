@@ -143,3 +143,69 @@ models:
         description: Date the row was produced.
       - name: LOAD_TS
         description: Timestamp the row was materialized.
+
+  - name: customer_risk_scores
+    description: >
+      Composite customer risk scoring data product. Deterministic logic from
+      sas/03_sas_risk_scoring.sas is ported here and in
+      int_customer_risk_features: the five risk components, the weighted
+      composite score, RISK_TIER bucketing, the top-two risk drivers and the
+      watch-list / review-required flags.
+
+      EXTERNAL SCORING BOUNDARY - PROC LOGISTIC has no dbt SQL equivalent, so
+      PROBABILITY_OF_DEFAULT is not computed by this model. It is read from the
+      customer_default_probabilities hand-off table, populated either
+      in-database by `dbt run-operation run_td_glm_default_scores` (Teradata
+      TD_GLM / TD_GLMPredict, see macros/run_td_glm_default_scores.sql) or by an
+      external scoring job whose output is loaded with `dbt seed`. Unscored
+      customers get a probability of 0, matching the SAS
+      coalesce(PROB_DEFAULT, 0); every other column is unchanged from the SAS
+      program.
+
+      The column contract is DATA_PRODUCTS_DB.CUSTOMER_RISK_SCORES in
+      ddl/02_data_product_tables.sql.
+    columns:
+      - name: CUSTOMER_ID
+        description: Customer surrogate key; primary index of the table.
+        data_tests:
+          - not_null
+          - unique
+      - name: COMPOSITE_RISK_SCORE
+        description: Weighted 0-100 risk score; higher means riskier.
+        data_tests:
+          - not_null
+      - name: RISK_TIER
+        description: "LOW, MODERATE, ELEVATED, HIGH or CRITICAL."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['LOW', 'MODERATE', 'ELEVATED', 'HIGH', 'CRITICAL']
+      - name: PROBABILITY_OF_DEFAULT
+        description: Modelled default probability from the scoring boundary; 0 when unscored.
+      - name: CREDIT_RISK_COMPONENT
+        description: Inverse of the normalized bureau score, clamped to 0-100.
+      - name: BEHAVIOUR_RISK_COMPONENT
+        description: Inverse of the on-time payment percentage, clamped to 0-100.
+      - name: VELOCITY_RISK_COMPONENT
+        description: Debit velocity spike scaled to 0-100.
+      - name: BUREAU_SCORE_COMPONENT
+        description: Normalized bureau score, clamped to 0-100.
+      - name: PAYMENT_HISTORY_COMPONENT
+        description: On-time payment percentage, clamped to 0-100.
+      - name: PRIMARY_RISK_DRIVER
+        description: Highest scoring risk component.
+      - name: SECONDARY_RISK_DRIVER
+        description: Second highest scoring risk component.
+      - name: SCORE_DELTA_30D
+        description: Placeholder carried over from the SAS program; always 0.
+      - name: WATCH_LIST_FLAG
+        description: "Y for CRITICAL customers with a default probability above 0.5."
+      - name: REVIEW_REQUIRED_FLAG
+        description: "Y when the composite score is 60+ and velocity ratio exceeds 2."
+      - name: MODEL_VERSION
+        description: Version from the scoring job, falling back to the risk_model_version var.
+      - name: EFFECTIVE_DATE
+        description: Date the row was produced.
+      - name: LOAD_TS
+        description: Timestamp the row was materialized.
