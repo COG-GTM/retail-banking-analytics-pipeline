@@ -27,6 +27,14 @@ vars:
   segment_model_version: 'SEG_V3.2'
   risk_model_version: 'RISK_V4.0'
   master_model_version: 'MASTER_V1.5'
+  # Mirror run results into the legacy audit table; dbt's run_results.json
+  # remains the primary artifact. Set to false to skip the audit insert.
+  enable_etl_run_log: true
+  etl_run_log_relation: "{{ env_var('DBT_SCHEMA_STAGING', 'ETL_STAGING_DB') }}.ETL_RUN_LOG"
+
+# Replaces the per-script ETL_RUN_LOG inserts the BTEQ jobs carried
+on-run-end:
+  - "{{ log_run_results(results) }}"
 
 models:
   retail_banking_analytics:

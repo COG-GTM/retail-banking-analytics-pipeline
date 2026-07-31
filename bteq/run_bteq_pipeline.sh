@@ -1,5 +1,21 @@
 #!/bin/bash
 # =============================================================================
+# DEPRECATED - retained for reference only
+# =============================================================================
+# The BTEQ layer has been migrated to dbt. Use the dbt pipeline instead:
+#
+#   ./orchestration/run_full_pipeline.sh
+#   dbt run --select tag:staging tag:intermediate
+#
+# The three BTEQ staging scripts have been ported to dbt models under dbt/models
+# (stg_customer_360, stg_txn_summary, stg_risk_factors, int_daily_balance,
+# int_payment_history).
+#
+# This script is no longer part of the scheduled pipeline and will be removed
+# once the dbt cutover is complete.
+# =============================================================================
+
+# =============================================================================
 # BTEQ Pipeline Orchestrator
 # =============================================================================
 # Runs the three BTEQ staging scripts in sequence with error handling.
@@ -13,6 +29,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/../config/pipeline_config.cfg"
+
+echo "WARNING: bteq/run_bteq_pipeline.sh is DEPRECATED. The BTEQ layer now runs through dbt;" >&2
+echo "         use ./orchestration/run_full_pipeline.sh instead." >&2
+if [ "${ALLOW_DEPRECATED_BTEQ:-false}" != "true" ]; then
+    echo "         Set ALLOW_DEPRECATED_BTEQ=true to run it anyway." >&2
+    exit 1
+fi
+
 
 mkdir -p "${LOG_DIR}/bteq"
 
