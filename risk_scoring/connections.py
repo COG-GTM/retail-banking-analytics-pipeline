@@ -15,7 +15,10 @@ Only the backend changes between environments; module code always goes through
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
@@ -23,6 +26,8 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import StructType
 
 from .config import PipelineConfig
+
+logger = logging.getLogger(__name__)
 
 
 def normalise_columns(df: DataFrame) -> DataFrame:
@@ -85,12 +90,116 @@ class CsvBackend(DataBackend):
         )
 
 
-class JdbcBackend(DataBackend):
-    """Teradata over JDBC. Credentials come from ``TD_PASSWORD``, never source."""
+class JdbcConfigurationError(RuntimeError):
+    """The JDBC backend cannot run: missing credentials, driver or tuning values."""
 
-    def __init__(self, spark: SparkSession, config: PipelineConfig):
+
+@dataclass(frozen=True)
+class JdbcTuning:
+    """Read/write tuning for the Teradata JDBC connector.
+
+    Defaults suit the volumes this pipeline moves. ``partition_column`` is
+    opt-in: Spark only parallelises a read when a numeric column and both
+    bounds are supplied, and the staging tables have no natural partition
+    column, so a single-partition read is the default — as it was under
+    SAS/ACCESS.
+    """
+
+    #: Prefix of the config keys understood by :meth:`from_mapping`.
+    KEY_PREFIX = "TD_"
+
+    fetchsize: int = 10_000
+    batchsize: int = 10_000
+    num_partitions: int = 8
+    partition_column: str | None = None
+    lower_bound: int | None = None
+    upper_bound: int | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("fetchsize", "batchsize", "num_partitions"):
+            value = getattr(self, name)
+            if value <= 0:
+                raise JdbcConfigurationError(
+                    f"JdbcTuning.{name} must be positive, got {value}"
+                )
+        bounds = (self.lower_bound, self.upper_bound)
+        if self.partition_column and any(b is None for b in bounds):
+            raise JdbcConfigurationError(
+                "JdbcTuning.partition_column requires both lower_bound and "
+                "upper_bound; Spark ignores a partition column without bounds."
+            )
+        if not self.partition_column and any(b is not None for b in bounds):
+            raise JdbcConfigurationError(
+                "JdbcTuning lower_bound/upper_bound are only meaningful "
+                "together with a partition_column."
+            )
+
+    @classmethod
+    def from_mapping(cls, values: Mapping[str, str]) -> "JdbcTuning":
+        """Build tuning from ``TD_*`` config keys, falling back to the defaults.
+
+        ``values`` is whatever the caller resolved (``parse_pipeline_cfg``
+        output merged with the environment); this module never reads the
+        environment itself.
+        """
+        defaults = cls()
+
+        def integer(key: str, default: int | None) -> int | None:
+            raw = values.get(cls.KEY_PREFIX + key)
+            if raw is None or raw == "":
+                return default
+            try:
+                return int(raw)
+            except ValueError:
+                raise JdbcConfigurationError(
+                    f"{cls.KEY_PREFIX + key} must be an integer, got {raw!r}"
+                ) from None
+
+        return cls(
+            fetchsize=integer("FETCHSIZE", defaults.fetchsize),
+            batchsize=integer("BATCHSIZE", defaults.batchsize),
+            num_partitions=integer("NUM_PARTITIONS", defaults.num_partitions),
+            partition_column=values.get(cls.KEY_PREFIX + "PARTITION_COLUMN") or None,
+            lower_bound=integer("LOWER_BOUND", None),
+            upper_bound=integer("UPPER_BOUND", None),
+        )
+
+
+def redact_options(options: Mapping[str, str]) -> dict[str, str]:
+    """Copy of ``options`` that is safe to log — the password is masked."""
+    return {k: ("***" if k == "password" else v) for k, v in options.items()}
+
+
+class JdbcBackend(DataBackend):
+    """Teradata over JDBC. Credentials come from ``TD_PASSWORD``, never source.
+
+    Replaces the four ``LIBNAME ... teradata`` statements of
+    ``connect_teradata.sas`` and their ``{SAS004}`` hardcoded passwords. The
+    password is resolved per operation, so building the backend and inspecting
+    its options never needs the secret — only a real connection does.
+    """
+
+    def __init__(
+        self,
+        spark: SparkSession,
+        config: PipelineConfig,
+        tuning: JdbcTuning | None = None,
+    ):
         self.spark = spark
         self.config = config
+        self.tuning = tuning or JdbcTuning()
+
+    def _password(self) -> str:
+        td = self.config.teradata
+        try:
+            return td.password
+        except RuntimeError as exc:
+            raise JdbcConfigurationError(
+                f"Cannot reach Teradata at {td.server} as {td.username}: "
+                f"${td.password_env_var} is unset. Export it from the secret "
+                "store before running with PIPELINE_IO_BACKEND=jdbc, or run "
+                "locally with PIPELINE_IO_BACKEND=csv."
+            ) from exc
 
     def _options(self, database: str) -> dict[str, str]:
         td = self.config.teradata
@@ -98,17 +207,54 @@ class JdbcBackend(DataBackend):
             "url": td.jdbc_url(database),
             "driver": td.driver,
             "user": td.username,
-            "password": td.password,
+            "password": self._password(),
         }
+
+    def read_options(self, database: str, table: str) -> dict[str, str]:
+        """Every option a read of ``database.table`` is issued with."""
+        options = self._options(database)
+        options["dbtable"] = f"{database}.{table}"
+        options["fetchsize"] = str(self.tuning.fetchsize)
+        if self.tuning.partition_column:
+            options["partitionColumn"] = self.tuning.partition_column
+            options["lowerBound"] = str(self.tuning.lower_bound)
+            options["upperBound"] = str(self.tuning.upper_bound)
+            options["numPartitions"] = str(self.tuning.num_partitions)
+        return options
+
+    def write_options(self, database: str, table: str) -> dict[str, str]:
+        """Every option an overwrite of ``database.table`` is issued with.
+
+        ``truncate=true`` stops Spark dropping and recreating the target: the
+        SAS this replaces issued ``DELETE FROM``, not ``DROP TABLE``, so the
+        Teradata table definition (primary index, grants) has to survive.
+        """
+        options = self._options(database)
+        options["dbtable"] = f"{database}.{table}"
+        options["batchsize"] = str(self.tuning.batchsize)
+        options["numPartitions"] = str(self.tuning.num_partitions)
+        options["truncate"] = "true"
+        return options
+
+    def _ensure_driver(self) -> None:
+        """Fail early, and legibly, when the Teradata JDBC jar is not loaded."""
+        driver = self.config.teradata.driver
+        try:
+            self.spark.sparkContext._jvm.java.lang.Class.forName(driver)
+        except Exception as exc:  # py4j surfaces the JVM ClassNotFoundException
+            raise JdbcConfigurationError(
+                f"Teradata JDBC driver {driver} is not on the Spark classpath. "
+                "Supply terajdbc4.jar (plus tdgssconfig.jar on older releases) "
+                "through spark.jars / --jars or spark.jars.packages."
+            ) from exc
 
     def read_table(
         self, database: str, table: str, schema: StructType | None = None
     ) -> DataFrame:
-        df = normalise_columns(
-            self.spark.read.format("jdbc")
-            .options(**self._options(database), dbtable=f"{database}.{table}")
-            .load()
-        )
+        options = self.read_options(database, table)
+        self._ensure_driver()
+        logger.info("jdbc read options=%s", redact_options(options))
+        df = normalise_columns(self.spark.read.format("jdbc").options(**options).load())
         if schema is None:
             return df
         return df.select(*[
@@ -118,13 +264,10 @@ class JdbcBackend(DataBackend):
         ])
 
     def overwrite_table(self, df: DataFrame, database: str, table: str) -> None:
-        (
-            df.write.format("jdbc")
-            .options(**self._options(database), dbtable=f"{database}.{table}")
-            .option("truncate", "true")
-            .mode("overwrite")
-            .save()
-        )
+        options = self.write_options(database, table)
+        self._ensure_driver()
+        logger.info("jdbc overwrite options=%s", redact_options(options))
+        df.write.format("jdbc").options(**options).mode("overwrite").save()
 
 
 def build_backend(spark: SparkSession, config: PipelineConfig) -> DataBackend:
