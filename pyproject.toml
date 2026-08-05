@@ -1,0 +1,82 @@
+[project]
+name = "retail-banking-analytics-pyspark"
+version = "1.0.0"
+description = "PySpark port of the Teradata BTEQ + SAS retail banking analytics pipeline"
+requires-python = ">=3.10"
+dependencies = [
+    "pyspark>=3.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+]
+postgres = [
+    "psycopg2-binary>=2.9",
+]
+
+[tool.setuptools]
+package-dir = { "" = "pyspark" }
+
+[tool.setuptools.packages.find]
+where = ["pyspark"]
+include = ["common*", "jobs*", "orchestration*"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+pythonpath = ["pyspark"]
+testpaths = ["pyspark/tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--cov=common",
+    "--cov=jobs",
+    "--cov=orchestration",
+    "--cov-report=term-missing",
+    "--cov-report=xml:coverage.xml",
+    "--cov-fail-under=90",
+    "-m",
+    "not performance",
+]
+markers = [
+    "unit: pure transform tests on small in-memory DataFrames",
+    "functional: whole-job tests on curated fixtures, asserting the DDL contract",
+    "regression: parity against the legacy expected outputs",
+    "nonfunctional: validation, audit, config and abort-on-failure behaviour",
+    "performance: opt-in scaled synthetic runs asserting the runtime SLAs",
+    "e2e: one full DAG run on a synthetic medium data set",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+]
+
+[tool.coverage.run]
+branch = false
+source = ["pyspark/common", "pyspark/jobs", "pyspark/orchestration"]
+omit = ["pyspark/tests/*"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "@abstractmethod",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["pyspark"]
+exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = ["E501", "B008", "RUF012"]
+
+[tool.ruff.lint.per-file-ignores]
+"pyspark/tests/*" = ["E402"]
