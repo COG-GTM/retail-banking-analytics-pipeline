@@ -1,0 +1,5 @@
+pyspark==4.2.0
+# risk_scoring.model builds the observed information matrix for stepwise
+# selection with numpy (pyspark.ml exposes no p-values for LogisticRegression).
+numpy==2.2.1
+pytest==8.3.4
