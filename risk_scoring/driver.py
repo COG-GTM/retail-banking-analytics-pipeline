@@ -68,59 +68,63 @@ def run(config: PipelineConfig | None = None, spark: SparkSession | None = None)
 
     # ---- STEP 1: extract ------------------------------------------------- #
     risk_raw = read_risk_raw(connections).cache()
-    audit.log_step(
-        step=STEP,
-        status="SUCCESS",
-        msg="Extracted risk factors",
-        rowcount=risk_raw.count(),
-    )
-
-    # ---- STEP 2: feature preparation ------------------------------------- #
-    risk_features = build_risk_features(risk_raw)
-
-    # ---- STEP 3: logistic regression ------------------------------------- #
-    audit.log_step(
-        step=STEP, status="START", msg="Training logistic regression model"
-    )
-    model_result = train_and_score(risk_features, config)
-    audit.log_step(
-        step=STEP,
-        status="SUCCESS",
-        msg=f"Model fitted on predictors {','.join(model_result.selected_features)}",
-    )
-
-    # ---- STEP 4: composite score and tiers ------------------------------- #
-    audit.log_step(step=STEP, status="START", msg="Computing composite scores")
-    classified = classify_risk(model_result.scored, config).cache()
-    row_count = classified.count()
-    audit.log_step(
-        step=STEP, status="SUCCESS", msg="Risk scores computed", rowcount=row_count
-    )
-
-    # ---- STEP 5: validate ------------------------------------------------ #
-    result = validate_table(
-        classified,
-        table=CUSTOMER_RISK_SCORES,
-        key_cols=("CUSTOMER_ID",),
-        not_null=("CUSTOMER_ID", "COMPOSITE_RISK_SCORE", "RISK_TIER"),
-        min_rows=config.min_rows,
-        audit=audit,
-    )
-    if not result.passed:
-        audit.log_step(step=STEP, status="ERROR", msg="Validation failed")
-        raise ValidationError(
-            f"Validation failed for {result.table}: {'; '.join(result.errors)}"
+    classified: DataFrame | None = None
+    # An aborted STEP 5 must not leave either cache pinned in a session the
+    # caller keeps using.
+    try:
+        audit.log_step(
+            step=STEP,
+            status="SUCCESS",
+            msg="Extracted risk factors",
+            rowcount=risk_raw.count(),
         )
 
-    log_tier_distribution(classified, audit)
+        # ---- STEP 2: feature preparation --------------------------------- #
+        risk_features = build_risk_features(risk_raw)
 
-    # ---- STEP 6: load ---------------------------------------------------- #
-    # write_customer_risk_scores emits its own START/SUCCESS audit rows.
-    written = write_customer_risk_scores(classified, connections, audit=audit)
+        # ---- STEP 3: logistic regression --------------------------------- #
+        audit.log_step(
+            step=STEP, status="START", msg="Training logistic regression model"
+        )
+        model_result = train_and_score(risk_features, config)
+        audit.log_step(
+            step=STEP,
+            status="SUCCESS",
+            msg=f"Model fitted on predictors {','.join(model_result.selected_features)}",
+        )
 
-    risk_raw.unpersist()
-    classified.unpersist()
-    return written
+        # ---- STEP 4: composite score and tiers --------------------------- #
+        audit.log_step(step=STEP, status="START", msg="Computing composite scores")
+        classified = classify_risk(model_result.scored, config).cache()
+        row_count = classified.count()
+        audit.log_step(
+            step=STEP, status="SUCCESS", msg="Risk scores computed", rowcount=row_count
+        )
+
+        # ---- STEP 5: validate -------------------------------------------- #
+        result = validate_table(
+            classified,
+            table=CUSTOMER_RISK_SCORES,
+            key_cols=("CUSTOMER_ID",),
+            not_null=("CUSTOMER_ID", "COMPOSITE_RISK_SCORE", "RISK_TIER"),
+            min_rows=config.min_rows,
+            audit=audit,
+        )
+        if not result.passed:
+            audit.log_step(step=STEP, status="ERROR", msg="Validation failed")
+            raise ValidationError(
+                f"Validation failed for {result.table}: {'; '.join(result.errors)}"
+            )
+
+        log_tier_distribution(classified, audit)
+
+        # ---- STEP 6: load ------------------------------------------------ #
+        # write_customer_risk_scores emits its own START/SUCCESS audit rows.
+        return write_customer_risk_scores(classified, connections, audit=audit)
+    finally:
+        risk_raw.unpersist()
+        if classified is not None:
+            classified.unpersist()
 
 
 def main(argv: list[str] | None = None) -> int:

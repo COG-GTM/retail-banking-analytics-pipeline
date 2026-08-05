@@ -285,13 +285,14 @@ class JdbcBackend(DataBackend):
 
 def build_backend(spark: SparkSession, config: PipelineConfig) -> DataBackend:
     backends = {"csv": CsvBackend, "jdbc": JdbcBackend}
-    try:
-        return backends[config.io_backend](spark, config)
-    except KeyError:
+    # Membership first: a KeyError from inside a backend constructor must not be
+    # reported as an unknown backend name.
+    if config.io_backend not in backends:
         raise ValueError(
             f"Unknown PIPELINE_IO_BACKEND {config.io_backend!r}; "
             f"expected one of {sorted(backends)}"
-        ) from None
+        )
+    return backends[config.io_backend](spark, config)
 
 
 class Connections:

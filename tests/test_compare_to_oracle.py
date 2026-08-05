@@ -219,6 +219,18 @@ def test_watch_list_flag_is_gated_by_the_verdict(tmp_path: Path) -> None:
     assert "| WATCH_LIST_FLAG | 1 | 1 | 0.0000% | - |" in report
 
 
+def test_duplicate_keys_in_the_output_fail_the_verdict(tmp_path: Path) -> None:
+    # index_by_key() would otherwise collapse the pair and report full coverage.
+    actual = write_csv(tmp_path / "actual.csv", [row(1), row(1), row(2)])
+    oracle = write_csv(tmp_path / "oracle.csv", [row(1), row(2)])
+
+    report, exact_ok = build_report(actual, oracle)
+
+    assert not exact_ok
+    assert "Duplicate `CUSTOMER_ID` in the PySpark output: 1 key(s)" in report
+    assert "duplicate `CUSTOMER_ID` values" in report
+
+
 def test_display_path_is_relative_to_the_repo_root(tmp_path: Path) -> None:
     assert display_path(REPO_ROOT / "output" / "x_csv") == "output/x_csv"
     # A path outside the repo stays absolute rather than growing ../../..

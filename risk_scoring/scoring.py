@@ -29,7 +29,7 @@ PAYMENT_HISTORY_WEIGHT = 0.10
 COMPOSITE_SCALE = 2
 PROBABILITY_SCALE = 6
 
-#: Lower bound of every tier above LOW, paired with the tier it opens.
+#: Exclusive upper bound of each tier below CRITICAL, paired with the tier it closes.
 RISK_TIER_BOUNDS = ((20.0, "LOW"), (40.0, "MODERATE"), (60.0, "ELEVATED"), (80.0, "HIGH"))
 RISK_TIER_TOP = "CRITICAL"
 

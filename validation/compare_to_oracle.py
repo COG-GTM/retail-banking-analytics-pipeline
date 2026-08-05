@@ -110,6 +110,17 @@ def index_by_key(rows: list[dict[str, str]]) -> dict[str, dict[str, str]]:
     return {row[KEY]: row for row in rows}
 
 
+def duplicate_keys(rows: list[dict[str, str]]) -> list[str]:
+    """Keys appearing more than once, which :func:`index_by_key` would collapse.
+
+    The sink's own key-uniqueness gate should make this impossible, but the
+    comparison must be able to see the failure rather than silently de-duplicate
+    its way to full coverage.
+    """
+    counts = Counter(row[KEY] for row in rows)
+    return sorted((key for key, n in counts.items() if n > 1), key=int)
+
+
 def to_float(value: str | None) -> float | None:
     if value is None or value == "":
         return None
@@ -230,8 +241,11 @@ def display_path(path: Path) -> str:
 
 
 def build_report(actual_path: Path, oracle_path: Path) -> tuple[str, bool]:
-    actual = index_by_key(read_rows(actual_path))
-    oracle = index_by_key(read_rows(oracle_path))
+    actual_rows = read_rows(actual_path)
+    oracle_rows = read_rows(oracle_path)
+    actual = index_by_key(actual_rows)
+    oracle = index_by_key(oracle_rows)
+    duplicates = duplicate_keys(actual_rows)
 
     only_actual = sorted(set(actual) - set(oracle), key=int)
     only_oracle = sorted(set(oracle) - set(actual), key=int)
@@ -248,6 +262,11 @@ def build_report(actual_path: Path, oracle_path: Path) -> tuple[str, bool]:
         sections.append(f"* Sample keys only in PySpark: {only_actual[:MAX_SAMPLES]}")
     if only_oracle[:MAX_SAMPLES]:
         sections.append(f"* Sample keys only in oracle: {only_oracle[:MAX_SAMPLES]}")
+    if duplicates:
+        sections.append(
+            f"* **Duplicate `{KEY}` in the PySpark output: {len(duplicates)} key(s)**, "
+            f"sample {duplicates[:MAX_SAMPLES]}"
+        )
 
     # ---- exact parity ----------------------------------------------------- #
     diffs = [
@@ -257,7 +276,12 @@ def build_report(actual_path: Path, oracle_path: Path) -> tuple[str, bool]:
         compare_string_column(column, common, actual, oracle)
         for column in EXACT_STRING_COLUMNS
     ]
-    exact_ok = all(d.mismatches == 0 for d in diffs) and not only_actual and not only_oracle
+    exact_ok = (
+        all(d.mismatches == 0 for d in diffs)
+        and not only_actual
+        and not only_oracle
+        and not duplicates
+    )
 
     sections += ["", "## Exact parity (deterministic fields)", ""]
     sections.append(
@@ -393,6 +417,8 @@ def build_report(actual_path: Path, oracle_path: Path) -> tuple[str, bool]:
         sections.append("Exact parity on deterministic fields: **PASS**")
     else:
         reasons = []
+        if duplicates:
+            reasons.append(f"the output has duplicate `{KEY}` values")
         if only_actual or only_oracle:
             reasons.append("the row sets differ")
         if mismatching:

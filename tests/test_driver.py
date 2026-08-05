@@ -74,6 +74,9 @@ def test_run_aborts_when_the_row_count_gate_fails(spark, config) -> None:
 
     # STEP 6 never ran, so nothing was written.
     assert not (strict.output_dir / "customer_risk_scores").exists()
+    # The abort path releases its caches: a long-lived session must not keep
+    # accumulating pinned RDDs run after failed run.
+    assert not spark.sparkContext._jsc.getPersistentRDDs()
 
 
 def test_main_reports_a_missing_teradata_password_without_a_traceback() -> None:
