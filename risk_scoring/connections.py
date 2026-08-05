@@ -21,9 +21,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import Column, DataFrame, SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.types import StructType
+from pyspark.sql.types import DataType, IntegralType, StructType
 
 from .config import PipelineConfig
 
@@ -33,6 +33,19 @@ logger = logging.getLogger(__name__)
 def normalise_columns(df: DataFrame) -> DataFrame:
     """Upper-case every column name (CSV exports are lower-cased)."""
     return df.toDF(*[c.upper() for c in df.columns])
+
+
+def cast_csv_value(column: Column, data_type: DataType) -> Column:
+    """Cast a raw CSV string to ``data_type``.
+
+    Teradata INTEGER columns come out of the extract as ``"13.0"``/``"0.0"``,
+    which Spark's ANSI-mode ``STRING -> INT`` cast rejects outright. Routing
+    integral targets through DOUBLE reproduces SQL cast semantics (truncation
+    towards zero) instead of failing the read.
+    """
+    if isinstance(data_type, IntegralType):
+        return column.cast("double").cast(data_type)
+    return column.cast(data_type)
 
 
 class DataBackend(ABC):
@@ -76,7 +89,7 @@ class CsvBackend(DataBackend):
             reader = reader.option("inferSchema", False)
             raw = normalise_columns(reader.csv(str(path)))
             return raw.select(*[
-                F.col(f.name).cast(f.dataType).alias(f.name)
+                cast_csv_value(F.col(f.name), f.dataType).alias(f.name)
                 for f in schema.fields
                 if f.name in raw.columns
             ])

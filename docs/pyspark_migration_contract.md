@@ -6,6 +6,15 @@ only coordination point, so **signatures, column names and types here are
 authoritative**. If SAS behaviour and this document disagree, SAS wins — raise
 it rather than silently diverging.
 
+> **Status: delivered.** Every module contract below is implemented, wired
+> together by `risk_scoring.driver`, and validated against the committed oracle
+> extract. Parity results and the full catalogue of deviations — including the
+> two places where the *oracle* diverges from the SAS source — are in
+> [`validation_report.md`](validation_report.md); the generated numbers are in
+> [`../validation/parity_report.md`](../validation/parity_report.md). This
+> document is retained as the design record and as the spec new modules must
+> satisfy.
+
 ## Ground rules
 
 1. **Package**: everything lives in the top-level `risk_scoring/` package at the
