@@ -31,9 +31,11 @@ testpaths = ["pyspark/tests"]
 addopts = [
     "-ra",
     "--strict-markers",
-    "--cov=common",
-    "--cov=jobs",
-    "--cov=orchestration",
+    # paths, not module names: the packages live under pyspark/ (added via `pythonpath`), which
+    # coverage cannot resolve by import name before the first test imports them
+    "--cov=pyspark/common",
+    "--cov=pyspark/jobs",
+    "--cov=pyspark/orchestration",
     "--cov-report=term-missing",
     "--cov-report=xml:coverage.xml",
     "--cov-fail-under=90",
