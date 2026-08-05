@@ -7,10 +7,15 @@ Reproduce everything in this report with:
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests/ -q                          # 156 unit tests
+python -m pytest tests/ -q                          # 161 unit tests
 python -m risk_scoring.driver --min-rows 400        # writes output/customer_risk_scores{,_csv}
 python validation/compare_to_oracle.py              # writes validation/parity_report.md
 ```
+
+Both commands exit non-zero on failure — the driver when the STEP 5 gate aborts
+or the connection is misconfigured, the comparison when the exact regime fails
+(pass `--allow-mismatch` to inspect a failing report without a non-zero exit), so
+either can gate CI as written.
 
 The machine-generated numbers live in
 [`validation/parity_report.md`](../validation/parity_report.md); this document is
@@ -21,11 +26,14 @@ the interpretation and the catalogue of deviations.
 | Area | Result |
 | --- | --- |
 | Row coverage | 407 / 407, no key present on only one side |
-| Deterministic fields (composite, all five components, tier, `SCORE_DELTA_30D`, `REVIEW_REQUIRED_FLAG`) | **exact parity, 0 mismatches** |
+| Deterministic fields (composite, all five components, tier, `SCORE_DELTA_30D`, `REVIEW_REQUIRED_FLAG`, `WATCH_LIST_FLAG`) | **exact parity, 0 mismatches** |
 | Risk tier distribution | identical: LOW 290, MODERATE 113, ELEVATED 4 |
 | `PRIMARY_RISK_DRIVER` / `SECONDARY_RISK_DRIVER` | diverge by design — the *oracle* deviates from the SAS source (§3.1) |
 | `PROBABILITY_OF_DEFAULT` | 0.0 here vs a constant 0.05 in the oracle; the target is degenerate (§3.2) |
-| `WATCH_LIST_FLAG` | exact parity (`N` for all 407 rows) despite §3.2 |
+
+`WATCH_LIST_FLAG` is gated as an exact field even though it derives from
+`PROBABILITY_OF_DEFAULT`: the `> 0.5` test is nowhere near being met, so it is
+deterministic in practice and a change in it would be a real regression.
 
 The end-to-end run is deterministic and re-runnable: the sink is a full
 truncate-load, so a second run reproduces the first byte for byte apart from

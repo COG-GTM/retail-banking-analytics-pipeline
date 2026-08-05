@@ -25,7 +25,7 @@ from pyspark.sql import DataFrame, SparkSession
 
 from .audit import AuditLog
 from .config import PipelineConfig
-from .connections import Connections
+from .connections import Connections, JdbcConfigurationError
 from .ingestion import build_risk_features, read_risk_raw
 from .model import train_and_score
 from .schemas import CUSTOMER_RISK_SCORES
@@ -154,7 +154,9 @@ def main(argv: list[str] | None = None) -> int:
     spark = build_spark_session(master=args.master)
     try:
         written = run(config, spark)
-    except ValidationError as exc:
+    except (ValidationError, JdbcConfigurationError) as exc:
+        # Both are operator-actionable: a failed data gate or a misconfigured
+        # connection. Report the message, not a traceback.
         logger.error("%s", exc)
         return 1
     finally:

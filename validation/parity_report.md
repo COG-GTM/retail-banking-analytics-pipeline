@@ -1,7 +1,7 @@
 # Risk Scoring Parity Report
 
-* PySpark output: `/home/ubuntu/repos/retail-banking-analytics-pipeline/output/customer_risk_scores_csv` — 407 rows
-* Oracle: `/home/ubuntu/repos/retail-banking-analytics-pipeline/data/03_sas_data_products/customer_risk_scores.csv` — 407 rows
+* PySpark output: `output/customer_risk_scores_csv` — 407 rows
+* Oracle: `data/03_sas_data_products/customer_risk_scores.csv` — 407 rows
 * Joined on `CUSTOMER_ID`: 407 common, 0 only in PySpark, 0 only in oracle
 
 ## Exact parity (deterministic fields)
@@ -17,6 +17,7 @@
 | SCORE_DELTA_30D | 407 | 0 | 100.0000% | 0 |
 | RISK_TIER | 407 | 0 | 100.0000% | - |
 | REVIEW_REQUIRED_FLAG | 407 | 0 | 100.0000% | - |
+| WATCH_LIST_FLAG | 407 | 0 | 100.0000% | - |
 
 ## Known oracle divergence: risk-driver tie-breaking
 

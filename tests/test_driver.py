@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -72,6 +74,24 @@ def test_run_aborts_when_the_row_count_gate_fails(spark, config) -> None:
 
     # STEP 6 never ran, so nothing was written.
     assert not (strict.output_dir / "customer_risk_scores").exists()
+
+
+def test_main_reports_a_missing_teradata_password_without_a_traceback() -> None:
+    # A subprocess, not an in-process call: main() stops the SparkContext, which
+    # is a JVM-wide singleton the other tests in this module share.
+    env = {k: v for k, v in os.environ.items() if k != "TD_PASSWORD"}
+    completed = subprocess.run(
+        [sys.executable, "-m", "risk_scoring.driver", "--io-backend", "jdbc"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+
+    assert completed.returncode == 1
+    assert "$TD_PASSWORD is unset" in completed.stderr
+    assert "Traceback" not in completed.stderr
 
 
 def test_log_tier_distribution_replaces_proc_freq(spark) -> None:

@@ -11,12 +11,15 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from validation.compare_to_oracle import (  # noqa: E402
+    REPO_ROOT,
     build_report,
     compare_numeric_column,
     compare_string_column,
     describe,
+    display_path,
     index_by_key,
     ks_statistic,
+    main,
     quantile,
     read_rows,
 )
@@ -199,6 +202,54 @@ def test_report_fails_when_row_coverage_differs(tmp_path: Path) -> None:
 
     assert not exact_ok
     assert "1 common, 1 only in PySpark, 0 only in oracle" in report
+    # No column mismatched, so the verdict must not point at absent samples.
+    assert "the row sets differ" in report
+    assert "mismatch samples above" not in report
+
+
+def test_watch_list_flag_is_gated_by_the_verdict(tmp_path: Path) -> None:
+    # Derived from PROBABILITY_OF_DEFAULT, which is distribution-parity only,
+    # but the `> 0.5` test is never close on real data, so it must be gated.
+    actual = write_csv(tmp_path / "actual.csv", [row(1, WATCH_LIST_FLAG="Y")])
+    oracle = write_csv(tmp_path / "oracle.csv", [row(1, WATCH_LIST_FLAG="N")])
+
+    report, exact_ok = build_report(actual, oracle)
+
+    assert not exact_ok
+    assert "| WATCH_LIST_FLAG | 1 | 1 | 0.0000% | - |" in report
+
+
+def test_display_path_is_relative_to_the_repo_root(tmp_path: Path) -> None:
+    assert display_path(REPO_ROOT / "output" / "x_csv") == "output/x_csv"
+    # A path outside the repo stays absolute rather than growing ../../..
+    assert display_path(tmp_path / "x.csv") == str(tmp_path / "x.csv")
+
+
+def test_cli_exits_non_zero_on_mismatch_by_default(tmp_path: Path) -> None:
+    actual = write_csv(tmp_path / "actual.csv", [row(1, RISK_TIER="HIGH")])
+    oracle = write_csv(tmp_path / "oracle.csv", [row(1)])
+    out = tmp_path / "report.md"
+    argv = ["--actual", str(actual), "--oracle", str(oracle), "--out", str(out)]
+
+    # Default must gate CI...
+    assert main(argv) == 1
+    # ...and the escape hatch must be explicit.
+    assert main([*argv, "--allow-mismatch"]) == 0
+    assert "**FAIL**" in out.read_text()
+
+
+def test_cli_exits_zero_when_parity_holds(tmp_path: Path) -> None:
+    rows = [row(1), row(2)]
+    actual = write_csv(tmp_path / "actual.csv", rows)
+    oracle = write_csv(tmp_path / "oracle.csv", rows)
+    out = tmp_path / "report.md"
+
+    code = main(
+        ["--actual", str(actual), "--oracle", str(oracle), "--out", str(out)]
+    )
+
+    assert code == 0
+    assert "**PASS**" in out.read_text()
 
 
 def test_probability_distribution_and_tier_sections_are_emitted(tmp_path: Path) -> None:

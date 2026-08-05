@@ -4,15 +4,20 @@ The oracle is the committed reference output of the original pipeline,
 ``data/03_sas_data_products/customer_risk_scores.csv``. It also replaces the
 ``PROC FREQ`` risk-tier monitoring block that the SAS program printed.
 
-Two parity regimes, per the migration contract:
+Three parity regimes, per the migration contract:
 
-* **exact** — the deterministic, model-independent fields (composite score,
-  components, tier, drivers, ``SCORE_DELTA_30D``, ``REVIEW_REQUIRED_FLAG``).
-  Numeric comparison is at the precision of the target DDL, since the PySpark
-  sink casts to DECIMAL while the oracle CSV carries full float precision.
-* **distribution** — ``PROBABILITY_OF_DEFAULT`` and the ``WATCH_LIST_FLAG``
-  derived from it, because MLlib's LBFGS fit is not bit-reproducible against
-  SAS's Fisher-scored ``PROC LOGISTIC``.
+* **exact** — the deterministic, model-independent fields: composite score,
+  the five components, tier, ``SCORE_DELTA_30D`` and both flags. These decide
+  the verdict. Numeric comparison is at the precision of the target DDL, since
+  the PySpark sink casts to DECIMAL while the oracle CSV carries full float
+  precision.
+* **known divergence** — ``PRIMARY_RISK_DRIVER``/``SECONDARY_RISK_DRIVER``,
+  where the *oracle* deviates from the SAS source. Reported in full, but
+  excluded from the verdict; the emitted report explains why.
+* **distribution** — ``PROBABILITY_OF_DEFAULT``, because MLlib's LBFGS fit is
+  not bit-reproducible against SAS's Fisher-scored ``PROC LOGISTIC``.
+
+Exits non-zero when the exact regime fails, so it is safe to wire into CI.
 
 Usage::
 
@@ -51,6 +56,9 @@ EXACT_NUMERIC_COLUMNS = {
 EXACT_STRING_COLUMNS = (
     "RISK_TIER",
     "REVIEW_REQUIRED_FLAG",
+    # Derived from PROBABILITY_OF_DEFAULT, but only through a `> 0.5` test that
+    # no row comes near, so it is deterministic in practice and worth gating.
+    "WATCH_LIST_FLAG",
 )
 #: Deterministic in the SAS sense, but the oracle itself deviates from the SAS
 #: source here, so they are reported separately and excluded from the verdict.
@@ -60,6 +68,7 @@ KNOWN_DIVERGENCE_STRING_COLUMNS = (
     "SECONDARY_RISK_DRIVER",
 )
 DISTRIBUTION_NUMERIC_COLUMNS = ("PROBABILITY_OF_DEFAULT",)
+#: Also compared exactly above; the distribution view shows the counts.
 DISTRIBUTION_CATEGORICAL_COLUMNS = ("WATCH_LIST_FLAG",)
 
 MAX_SAMPLES = 10
@@ -211,6 +220,15 @@ def markdown_table(header: list[str], rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
+def display_path(path: Path) -> str:
+    """Path relative to the repo root, so the report does not embed a machine."""
+    resolved = path.resolve()
+    try:
+        return str(resolved.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(resolved)
+
+
 def build_report(actual_path: Path, oracle_path: Path) -> tuple[str, bool]:
     actual = index_by_key(read_rows(actual_path))
     oracle = index_by_key(read_rows(oracle_path))
@@ -221,8 +239,8 @@ def build_report(actual_path: Path, oracle_path: Path) -> tuple[str, bool]:
 
     sections: list[str] = ["# Risk Scoring Parity Report", ""]
     sections.append(
-        f"* PySpark output: `{actual_path}` — {len(actual)} rows\n"
-        f"* Oracle: `{oracle_path}` — {len(oracle)} rows\n"
+        f"* PySpark output: `{display_path(actual_path)}` — {len(actual)} rows\n"
+        f"* Oracle: `{display_path(oracle_path)}` — {len(oracle)} rows\n"
         f"* Joined on `{KEY}`: {len(common)} common, "
         f"{len(only_actual)} only in PySpark, {len(only_oracle)} only in oracle"
     )
@@ -371,10 +389,17 @@ def build_report(actual_path: Path, oracle_path: Path) -> tuple[str, bool]:
         )
     )
     sections += ["", "## Verdict", ""]
-    sections.append(
-        "Exact parity on deterministic fields: "
-        + ("**PASS**" if exact_ok else "**FAIL** — see mismatch samples above.")
-    )
+    if exact_ok:
+        sections.append("Exact parity on deterministic fields: **PASS**")
+    else:
+        reasons = []
+        if only_actual or only_oracle:
+            reasons.append("the row sets differ")
+        if mismatching:
+            reasons.append("see the mismatch samples above")
+        sections.append(
+            "Exact parity on deterministic fields: **FAIL** — " + "; ".join(reasons)
+        )
     return "\n".join(sections) + "\n", exact_ok
 
 
@@ -393,9 +418,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--out", type=Path, default=REPO_ROOT / "validation" / "parity_report.md")
     parser.add_argument(
-        "--fail-on-mismatch",
+        "--allow-mismatch",
         action="store_true",
-        help="exit non-zero when deterministic fields do not match",
+        help=("always exit 0; by default a failing exact regime exits 1 so the "
+              "comparison can gate CI"),
     )
     args = parser.parse_args(argv)
 
@@ -403,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(report)
     print(report)
-    return 0 if exact_ok or not args.fail_on_mismatch else 1
+    return 0 if exact_ok or args.allow_mismatch else 1
 
 
 if __name__ == "__main__":
