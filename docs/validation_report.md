@@ -7,7 +7,7 @@ Reproduce everything in this report with:
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests/ -q                          # 140 unit tests
+python -m pytest tests/ -q                          # 156 unit tests
 python -m risk_scoring.driver --min-rows 400        # writes output/customer_risk_scores{,_csv}
 python validation/compare_to_oracle.py              # writes validation/parity_report.md
 ```
