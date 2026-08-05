@@ -23,11 +23,14 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import DecimalType, DoubleType, IntegralType, NumericType
 
 from common import schemas
+from common.audit import AuditLog
 from common.config import PRODUCTION_MIN_ROWS, PipelineConfig
 from common.io import DataIO
+from common.job import build_arg_parser, config_from_args, default_schema_map, io_from_args
 from common.schemas import TableSpec
+from common.spark import build_spark_session
 from common.validation import validate_table
-from orchestration.pipeline import PIPELINE, PipelineRun
+from orchestration.pipeline import PIPELINE, PipelineRun, run_pipeline
 
 LOGGER = logging.getLogger(__name__)
 
@@ -500,3 +503,44 @@ def write_metrics(metrics: dict[str, object], path: str | Path) -> Path:
     target.write_text(json.dumps(metrics, indent=2, default=str), encoding="utf-8")
     LOGGER.info("metrics written to %s", target)
     return target
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the DAG and instrument it in one session, then write the metrics artifact.
+
+    The profiles and validations have to be read back from the *persisted* tables, which is why
+    this shares a session with the run rather than post-processing its summary JSON.
+    """
+
+    parser = build_arg_parser("run the pipeline and export its metrics")
+    parser.add_argument("--out", required=True, help="path of the metrics JSON artifact")
+    parser.add_argument("--sample-rows", type=int, default=5, help="row sample size per table")
+    args = parser.parse_args(argv)
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s"
+    )
+
+    config = config_from_args(args)
+    spark = build_spark_session("retail_banking_metrics", master=args.master)
+    try:
+        io = io_from_args(args, spark, config)
+        run = run_pipeline(spark, io, config, AuditLog(run_timestamp=config.run_timestamp))
+        for line in run.summary_lines():
+            LOGGER.info(line)
+        metrics = collect_metrics(
+            spark,
+            io,
+            config,
+            run,
+            jdbc_url=args.jdbc_url or "",
+            schema_map=default_schema_map(config),
+            sample_rows=args.sample_rows,
+        )
+        write_metrics(metrics, args.out)
+        return run.return_code
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
+    raise SystemExit(main())

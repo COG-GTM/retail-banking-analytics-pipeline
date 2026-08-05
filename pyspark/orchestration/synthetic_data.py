@@ -139,17 +139,26 @@ def accounts(spark: SparkSession, n_customers: int, *, run_date: date) -> DataFr
             ),
         )
         .withColumn(
-            "CURRENT_BALANCE", (((F.col("id") * 977) % 250000) / 10.0).cast("decimal(15,2)")
-        )
-        .withColumn(
-            "AVAILABLE_BALANCE", (F.col("CURRENT_BALANCE") * F.lit(0.95)).cast("decimal(15,2)")
-        )
-        .withColumn(
             "CREDIT_LIMIT",
             F.when(
                 F.col("ACCOUNT_TYPE") == "CREDIT",
                 (F.lit(1000) + (F.col("id") * 131) % 40000).cast("decimal(15,2)"),
             ).otherwise(F.lit(0).cast("decimal(15,2)")),
+        )
+        .withColumn(
+            # a card balance is a draw against its limit: utilisation stays in [0, 1.2], the
+            # range CREDIT_UTIL_RATIO's DECIMAL(5,4) contract can hold. An unrelated balance
+            # would overflow that cast — in Teradata as much as in Spark.
+            "CURRENT_BALANCE",
+            F.when(
+                F.col("ACCOUNT_TYPE") == "CREDIT",
+                (F.col("CREDIT_LIMIT") * (((F.col("id") * 977) % 120) / 100.0)).cast(
+                    "decimal(15,2)"
+                ),
+            ).otherwise((((F.col("id") * 977) % 250000) / 10.0).cast("decimal(15,2)")),
+        )
+        .withColumn(
+            "AVAILABLE_BALANCE", (F.col("CURRENT_BALANCE") * F.lit(0.95)).cast("decimal(15,2)")
         )
         .withColumn("INTEREST_RATE", (((F.col("id") % 1500) + 50) / 10000.0).cast("decimal(5,4)"))
         .withColumn("BRANCH_ID", ((F.col("id") % 120) + 1).cast("int"))
