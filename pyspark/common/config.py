@@ -25,6 +25,10 @@ _STRFTIME_TRANSLATION = {
 DEFAULT_CFG_PATH = Path(__file__).resolve().parents[2] / "config" / "pipeline_config.cfg"
 
 
+#: ``%validate_table``'s production row floor; lowered only for the small sample extract.
+PRODUCTION_MIN_ROWS = 1000
+
+
 class ConfigError(RuntimeError):
     """Raised when the legacy configuration file cannot be interpreted."""
 
@@ -82,7 +86,7 @@ class PipelineConfig:
     lookback_months: int
     risk_score_threshold: int
     log_level: str
-    min_rows: int = 1000
+    min_rows: int = PRODUCTION_MIN_ROWS
     risk: RiskScoringConstants = field(default_factory=RiskScoringConstants)
     raw: dict[str, str] = field(default_factory=dict)
 
@@ -145,7 +149,7 @@ class PipelineConfig:
             lookback_months=int(values["LOOKBACK_MONTHS"]),
             risk_score_threshold=int(values["RISK_SCORE_THRESHOLD"]),
             log_level=values.get("LOG_LEVEL", "INFO"),
-            min_rows=1000 if min_rows is None else min_rows,
+            min_rows=PRODUCTION_MIN_ROWS if min_rows is None else min_rows,
             raw=dict(values),
         )
 

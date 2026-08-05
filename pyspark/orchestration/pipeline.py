@@ -157,6 +157,15 @@ class PipelineRun:
     def result_for(self, job_name: str) -> JobResult | None:
         return next((result for result in self.results if result.job_name == job_name), None)
 
+    def summary_lines(self) -> list[str]:
+        """One line per job, as the master script's tail prints it."""
+
+        return [
+            f"{result.job_name:<26} {result.status:<8} rows={result.row_count:<8} "
+            f"{result.elapsed_seconds:.1f}s{('  ' + result.error) if result.error else ''}"
+            for result in self.results
+        ]
+
     def as_dict(self) -> dict[str, object]:
         return {
             "run_timestamp": self.run_timestamp,
@@ -385,14 +394,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.metrics_json:
             path = run.write_json(args.metrics_json)
             LOGGER.info("metrics written to %s", path)
-        for result in run.results:
-            LOGGER.info(
-                "%-26s %-8s rows=%-8s %.1fs",
-                result.job_name,
-                result.status,
-                result.row_count,
-                result.elapsed_seconds,
-            )
+        for line in run.summary_lines():
+            LOGGER.info(line)
         return run.return_code
     finally:
         spark.stop()
