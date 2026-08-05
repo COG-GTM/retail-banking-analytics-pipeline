@@ -72,7 +72,8 @@ exclude_lines = [
 line-length = 100
 target-version = "py310"
 src = ["pyspark"]
-exclude = [".venv", "build", "dist"]
+# the pre-existing repository scripts are legacy artefacts and must not be reformatted
+exclude = [".venv", "build", "dist", "export_data.py", "local"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF"]

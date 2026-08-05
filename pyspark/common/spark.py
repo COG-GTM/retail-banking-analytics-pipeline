@@ -35,6 +35,21 @@ TEST_CONF: dict[str, str] = {
 }
 
 
+def _register_jars(jars: str) -> None:
+    """Put extra jars (e.g. the PostgreSQL driver) on the *driver* classpath.
+
+    ``spark.jars`` alone is not enough: the driver JVM is launched before the builder's config is
+    applied, so a ``DriverManager`` lookup in the driver process cannot see the jar. PySpark
+    builds that launch command from ``PYSPARK_SUBMIT_ARGS``, which is therefore where the jars
+    have to be declared.
+    """
+
+    submit_args = os.environ.get("PYSPARK_SUBMIT_ARGS", "")
+    if jars in submit_args:
+        return
+    os.environ["PYSPARK_SUBMIT_ARGS"] = f"--jars {jars} --driver-class-path {jars} pyspark-shell"
+
+
 def build_spark_session(
     app_name: str = "retail_banking_analytics",
     *,
@@ -56,6 +71,7 @@ def build_spark_session(
 
     jars = os.environ.get("SPARK_EXTRA_JARS")
     if jars:
+        _register_jars(jars)
         builder = builder.config("spark.jars", jars)
 
     session = builder.getOrCreate()
