@@ -6,13 +6,17 @@ import logging
 
 import pytest
 
+from pyspark.sql.types import DoubleType, LongType, StructField, StructType
+
 from risk_scoring.config import PipelineConfig
 from risk_scoring.connections import (
     CsvBackend,
     JdbcBackend,
     JdbcConfigurationError,
     JdbcTuning,
+    SourceContractError,
     build_backend,
+    project_to_schema,
     redact_options,
 )
 
@@ -160,3 +164,27 @@ def test_build_backend_still_selects_the_csv_path():
 def test_build_backend_selects_jdbc_without_needing_the_password(config, monkeypatch):
     monkeypatch.delenv("TD_PASSWORD", raising=False)
     assert isinstance(build_backend(None, config), JdbcBackend)
+
+
+def test_build_backend_rejects_an_unknown_backend():
+    with pytest.raises(ValueError, match="Unknown PIPELINE_IO_BACKEND 'delta'"):
+        build_backend(None, PipelineConfig(io_backend="delta"))
+
+
+class _FakeDataFrame:
+    def __init__(self, columns: list[str]) -> None:
+        self.columns = columns
+
+
+def test_project_to_schema_names_the_missing_columns():
+    schema = StructType([
+        StructField("CUSTOMER_ID", LongType()),
+        StructField("AVG_DAILY_BALANCE_90D", DoubleType()),
+    ])
+    frame = _FakeDataFrame(["CUSTOMER_ID"])
+
+    with pytest.raises(SourceContractError, match="AVG_DAILY_BALANCE_90D"):
+        project_to_schema(frame, schema, "STG.STG_RISK_FACTORS")
+
+    complete = _FakeDataFrame(["CUSTOMER_ID", "AVG_DAILY_BALANCE_90D", "EXTRA"])
+    assert project_to_schema(complete, schema, "STG.STG_RISK_FACTORS") is complete

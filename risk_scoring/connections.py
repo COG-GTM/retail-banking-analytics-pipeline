@@ -48,6 +48,25 @@ def cast_csv_value(column: Column, data_type: DataType) -> Column:
     return column.cast(data_type)
 
 
+class SourceContractError(RuntimeError):
+    """A source table is missing columns the declared schema requires."""
+
+
+def project_to_schema(df: DataFrame, schema: StructType, source: str) -> DataFrame:
+    """Project ``df`` onto ``schema``, naming any column the source lacks.
+
+    The mirror of the sink's ``SinkContractError``: a silently dropped column
+    would only surface later as a raw ``AnalysisException`` from a transform,
+    far from the extract that caused it.
+    """
+    missing = [f.name for f in schema.fields if f.name not in df.columns]
+    if missing:
+        raise SourceContractError(
+            f"{source} is missing declared columns: {', '.join(missing)}"
+        )
+    return df
+
+
 class DataBackend(ABC):
     """Read/write access to one logical warehouse."""
 
@@ -87,11 +106,12 @@ class CsvBackend(DataBackend):
             # CSV headers are lower-cased; read permissively then cast so the
             # declared schema still drives the types.
             reader = reader.option("inferSchema", False)
-            raw = normalise_columns(reader.csv(str(path)))
+            raw = project_to_schema(
+                normalise_columns(reader.csv(str(path))), schema, str(path)
+            )
             return raw.select(*[
                 cast_csv_value(F.col(f.name), f.dataType).alias(f.name)
                 for f in schema.fields
-                if f.name in raw.columns
             ])
         return normalise_columns(reader.option("inferSchema", True).csv(str(path)))
 
@@ -270,10 +290,9 @@ class JdbcBackend(DataBackend):
         df = normalise_columns(self.spark.read.format("jdbc").options(**options).load())
         if schema is None:
             return df
+        df = project_to_schema(df, schema, f"{database}.{table}")
         return df.select(*[
-            F.col(f.name).cast(f.dataType).alias(f.name)
-            for f in schema.fields
-            if f.name in df.columns
+            F.col(f.name).cast(f.dataType).alias(f.name) for f in schema.fields
         ])
 
     def overwrite_table(self, df: DataFrame, database: str, table: str) -> None:
