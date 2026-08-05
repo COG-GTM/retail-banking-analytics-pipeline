@@ -152,9 +152,8 @@ def transform_customer_aggregates(txn_summary: DataFrame) -> DataFrame:
     digital_weighted = F.sum(
         F.col("TXN_COUNT_TOTAL") * (F.col("PCT_WEB") + F.col("PCT_MOBILE")) / F.lit(100)
     )
-    is_active_account = (
-        F.col("DAYS_SINCE_LAST_TXN").isNull()
-        | (F.col("DAYS_SINCE_LAST_TXN") <= F.lit(ACTIVE_DAYS_THRESHOLD))
+    is_active_account = F.col("DAYS_SINCE_LAST_TXN").isNull() | (
+        F.col("DAYS_SINCE_LAST_TXN") <= F.lit(ACTIVE_DAYS_THRESHOLD)
     )
 
     return txn_summary.groupBy("CUSTOMER_ID").agg(
@@ -232,9 +231,7 @@ def transform_spend_percentile(
     non_missing = F.count(F.col(value_col)).over(population)
     group = F.floor(mean_rank * F.lit(groups) / (non_missing + F.lit(1)))
 
-    return customer_txn.withColumn(
-        output_col, F.when(F.col(value_col).isNotNull(), group)
-    )
+    return customer_txn.withColumn(output_col, F.when(F.col(value_col).isNotNull(), group))
 
 
 def transform_population_stats(customer_txn: DataFrame) -> DataFrame:
@@ -249,9 +246,7 @@ def transform_population_stats(customer_txn: DataFrame) -> DataFrame:
         F.lit(PERCENTILE_ACCURACY),
     ).alias("_QUARTILES")
 
-    return customer_txn.agg(
-        quartiles, F.count(F.col("TOTAL_DEBIT_AMT")).alias(_POPULATION)
-    ).select(
+    return customer_txn.agg(quartiles, F.count(F.col("TOTAL_DEBIT_AMT")).alias(_POPULATION)).select(
         F.col("_QUARTILES")[1].alias(_MEDIAN),
         (F.col("_QUARTILES")[2] - F.col("_QUARTILES")[0]).alias(_IQR),
         F.col(_POPULATION),
@@ -311,9 +306,7 @@ def run(spark: SparkSession, io: DataIO, config: PipelineConfig, audit: AuditLog
     audit.log_step(JOB_NAME, "START", f"Period: {period}")
 
     txn_summary = io.read_spec(SOURCE).persist()
-    audit.log_step(
-        JOB_NAME, "SUCCESS", "Extracted STG_TXN_SUMMARY", rowcount=txn_summary.count()
-    )
+    audit.log_step(JOB_NAME, "SUCCESS", "Extracted STG_TXN_SUMMARY", rowcount=txn_summary.count())
 
     output = transform_transaction_analytics(txn_summary, run_date=config.run_date).persist()
     txn_summary.unpersist()

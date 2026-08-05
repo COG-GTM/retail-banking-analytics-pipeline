@@ -153,7 +153,10 @@ def test_top_spend_category_divergence_is_confined_to_the_reference(spark, actua
     )
     joined = (
         actual.select("CUSTOMER_ID", F.col("TOP_SPEND_CATEGORY").alias("ACTUAL"))
-        .join(expected.select("CUSTOMER_ID", F.col("TOP_SPEND_CATEGORY").alias("EXPECTED")), "CUSTOMER_ID")
+        .join(
+            expected.select("CUSTOMER_ID", F.col("TOP_SPEND_CATEGORY").alias("EXPECTED")),
+            "CUSTOMER_ID",
+        )
         .join(categories, "CUSTOMER_ID")
     )
 

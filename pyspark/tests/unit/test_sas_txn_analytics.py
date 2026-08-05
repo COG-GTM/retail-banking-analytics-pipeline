@@ -18,13 +18,13 @@ from common.schemas import assert_schema
 from jobs.sas_txn_analytics import (
     MODEL_VERSION,
     RANK_GROUPS,
+    reporting_period,
     transform_anomaly_flag,
     transform_customer_aggregates,
     transform_population_stats,
     transform_spend_percentile,
     transform_spend_trend,
     transform_transaction_analytics,
-    reporting_period,
 )
 
 pytestmark = pytest.mark.unit
@@ -137,9 +137,7 @@ def test_totals_and_net_cash_flow_are_sums_of_the_account_rows(staging):
 
 
 def test_avg_transaction_size_and_digital_pct_fall_back_to_zero_without_transactions(staging):
-    aggregated = _aggregate(
-        staging({"CUSTOMER_ID": 1, "ACCOUNT_ID": 10, "TXN_COUNT_TOTAL": 0})
-    )
+    aggregated = _aggregate(staging({"CUSTOMER_ID": 1, "ACCOUNT_ID": 10, "TXN_COUNT_TOTAL": 0}))
     assert aggregated[1]["AVG_TRANSACTION_SIZE"] == 0
     assert aggregated[1]["DIGITAL_TXN_PCT"] == 0
 
@@ -372,7 +370,11 @@ def test_anomaly_flag_keeps_its_initial_value_for_a_missing_spend(spark):
 
 @pytest.mark.parametrize(
     ("run_date", "expected"),
-    [(date(2026, 4, 10), "2026-04"), (date(2026, 1, 1), "2026-01"), (date(2025, 12, 31), "2025-12")],
+    [
+        (date(2026, 4, 10), "2026-04"),
+        (date(2026, 1, 1), "2026-01"),
+        (date(2025, 12, 31), "2025-12"),
+    ],
 )
 def test_reporting_period_is_the_first_of_the_run_month(run_date, expected):
     assert reporting_period(run_date) == expected
