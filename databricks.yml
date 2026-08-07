@@ -1,0 +1,61 @@
+# Databricks Asset Bundle — retail banking analytics pipeline.
+#
+# Replaces orchestration/run_full_pipeline.sh and config/pipeline_config.cfg.
+#
+#   databricks bundle validate -t dev
+#   databricks bundle deploy   -t dev
+#   databricks bundle run retail_banking_analytics_pipeline -t dev
+bundle:
+  name: retail_banking_analytics
+
+include:
+  - databricks/resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog holding every layer of the pipeline.
+    default: retail_banking
+  bronze_schema:
+    description: Schema for the ingested source tables.
+    default: core_banking
+  silver_schema:
+    description: Schema for the staging tables produced by the former BTEQ scripts.
+    default: etl_staging
+  gold_schema:
+    description: Schema for the certified data products.
+    default: data_products
+  ops_schema:
+    description: Schema holding the ETL audit log.
+    default: _ops
+  source_data_path:
+    description: Landing location of the source CSV extracts.
+    default: /Volumes/retail_banking/core_banking/landing
+  min_gold_rows:
+    description: Minimum row count each gold product must reach (former %validate_table min_rows).
+    default: "1000"
+  node_type_id:
+    description: Worker node type for the job cluster.
+    default: i3.xlarge
+  spark_version:
+    description: Databricks Runtime for the job cluster (ML runtime for pyspark.ml).
+    default: 15.4.x-cpu-ml-scala2.12
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: ${workspace.host}
+    variables:
+      catalog: retail_banking_dev
+      # Sample extracts are far smaller than the production book.
+      min_gold_rows: "100"
+
+  prod:
+    mode: production
+    workspace:
+      host: ${workspace.host}
+      root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
+    permissions:
+      - level: CAN_MANAGE_RUN
+        group_name: data_engineering

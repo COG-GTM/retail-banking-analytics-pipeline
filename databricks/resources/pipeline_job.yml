@@ -1,0 +1,132 @@
+# Workflow replacing orchestration/run_full_pipeline.sh.
+#
+#   uc_setup
+#     -> bronze_ingest
+#       -> silver_customer_360
+#         -> silver_txn_summary   ┐
+#         -> silver_risk_factors  ┘ (parallel)
+#           -> gold_customer_segments ┐
+#           -> gold_txn_analytics     ├ (parallel)
+#           -> gold_risk_scoring      ┘
+#             -> gold_data_products
+#               -> validate_data_products
+resources:
+  jobs:
+    retail_banking_analytics_pipeline:
+      name: "[${bundle.target}] Retail Banking Analytics Pipeline"
+      max_concurrent_runs: 1
+
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: bronze_schema
+          default: ${var.bronze_schema}
+        - name: silver_schema
+          default: ${var.silver_schema}
+        - name: gold_schema
+          default: ${var.gold_schema}
+        - name: ops_schema
+          default: ${var.ops_schema}
+        - name: source_data_path
+          default: ${var.source_data_path}
+        # Former VT_RUN_PARAMS volatile table / pipeline_config.cfg values.
+        - name: lookback_months
+          default: "12"
+        - name: risk_score_threshold
+          default: "700"
+        - name: min_gold_rows
+          default: ${var.min_gold_rows}
+        - name: model_seed
+          default: "42"
+        # Equivalents of run_full_pipeline.sh --skip-bteq / --skip-sas.
+        - name: skip_silver
+          default: "false"
+        - name: skip_gold
+          default: "false"
+        - name: run_id
+          default: "{{job.run_id}}"
+
+      job_clusters:
+        - job_cluster_key: pipeline_cluster
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type_id}
+            num_workers: 2
+            data_security_mode: SINGLE_USER
+            spark_conf:
+              spark.databricks.delta.optimizeWrite.enabled: "true"
+              spark.sql.sources.partitionOverwriteMode: dynamic
+
+      tasks:
+        - task_key: uc_setup
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../setup/00_uc_setup.py
+
+        - task_key: bronze_ingest
+          depends_on:
+            - task_key: uc_setup
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/bronze/01_load_source_tables.py
+
+        - task_key: silver_customer_360
+          depends_on:
+            - task_key: bronze_ingest
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/silver/01_stg_customer_360.py
+
+        - task_key: silver_txn_summary
+          depends_on:
+            - task_key: silver_customer_360
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/silver/02_stg_txn_summary.py
+
+        - task_key: silver_risk_factors
+          depends_on:
+            - task_key: silver_customer_360
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/silver/03_stg_risk_factors.py
+
+        - task_key: gold_customer_segments
+          depends_on:
+            - task_key: silver_txn_summary
+            - task_key: silver_risk_factors
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/gold/01_customer_segments.py
+
+        - task_key: gold_txn_analytics
+          depends_on:
+            - task_key: silver_txn_summary
+            - task_key: silver_risk_factors
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/gold/02_txn_analytics.py
+
+        - task_key: gold_risk_scoring
+          depends_on:
+            - task_key: silver_txn_summary
+            - task_key: silver_risk_factors
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/gold/03_risk_scoring.py
+
+        - task_key: gold_data_products
+          depends_on:
+            - task_key: gold_customer_segments
+            - task_key: gold_txn_analytics
+            - task_key: gold_risk_scoring
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/gold/04_data_products.py
+
+        - task_key: validate_data_products
+          depends_on:
+            - task_key: gold_data_products
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/validation/99_validate_data_products.py
