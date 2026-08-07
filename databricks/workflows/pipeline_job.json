@@ -1,0 +1,258 @@
+{
+  "name": "retail_banking_analytics_pipeline",
+  "description": "Retail banking medallion pipeline. Replaces orchestration/run_full_pipeline.sh: bronze ingest -> silver staging (was BTEQ) -> gold analytics (was SAS) -> post-run validation (was the envsubst BTEQ row-count block). Job parameters are delivered to each notebook as widgets, so no task-level base_parameters are needed. Edit notebook_path if the repo is checked out elsewhere in the workspace.",
+  "tags": {
+    "domain": "retail_banking",
+    "migrated_from": "teradata_bteq_sas94"
+  },
+  "max_concurrent_runs": 1,
+  "timeout_seconds": 14400,
+  "parameters": [
+    {
+      "name": "catalog",
+      "default": "retail_banking"
+    },
+    {
+      "name": "bronze_schema",
+      "default": "bronze"
+    },
+    {
+      "name": "silver_schema",
+      "default": "silver"
+    },
+    {
+      "name": "gold_schema",
+      "default": "gold"
+    },
+    {
+      "name": "ops_schema",
+      "default": "ops"
+    },
+    {
+      "name": "run_date",
+      "default": ""
+    },
+    {
+      "name": "lookback_months",
+      "default": "12"
+    },
+    {
+      "name": "risk_score_threshold",
+      "default": "700"
+    },
+    {
+      "name": "source_format",
+      "default": "csv"
+    },
+    {
+      "name": "source_data_path",
+      "default": ""
+    },
+    {
+      "name": "reference_data_path",
+      "default": ""
+    },
+    {
+      "name": "secret_scope",
+      "default": "retail-banking-analytics"
+    },
+    {
+      "name": "skip_bronze",
+      "default": "false"
+    },
+    {
+      "name": "skip_silver",
+      "default": "false"
+    },
+    {
+      "name": "skip_gold",
+      "default": "false"
+    },
+    {
+      "name": "skip_bteq",
+      "default": "false"
+    },
+    {
+      "name": "skip_sas",
+      "default": "false"
+    },
+    {
+      "name": "table_format",
+      "default": "delta"
+    },
+    {
+      "name": "optimize_tables",
+      "default": "true"
+    },
+    {
+      "name": "write_mode",
+      "default": "overwrite"
+    },
+    {
+      "name": "min_rows",
+      "default": "1"
+    }
+  ],
+  "job_clusters": [
+    {
+      "job_cluster_key": "pipeline_cluster",
+      "new_cluster": {
+        "spark_version": "15.4.x-scala2.12",
+        "node_type_id": "Standard_DS3_v2",
+        "num_workers": 2,
+        "data_security_mode": "SINGLE_USER",
+        "spark_conf": {
+          "spark.databricks.delta.optimizeWrite.enabled": "true",
+          "spark.databricks.delta.autoCompact.enabled": "true"
+        }
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "task_key": "bronze_ingest",
+      "description": "Register the six source tables as Delta tables in the bronze schema.",
+      "job_cluster_key": "pipeline_cluster",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Repos/retail-banking-analytics-pipeline/databricks/notebooks/bronze/00_ingest_source_tables",
+        "source": "WORKSPACE"
+      },
+      "timeout_seconds": 3600
+    },
+    {
+      "task_key": "silver_stg_customer_360",
+      "description": "Port of bteq/01_stg_customer_360.bteq",
+      "depends_on": [
+        {
+          "task_key": "bronze_ingest"
+        }
+      ],
+      "job_cluster_key": "pipeline_cluster",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Repos/retail-banking-analytics-pipeline/databricks/notebooks/silver/01_stg_customer_360",
+        "source": "WORKSPACE"
+      },
+      "timeout_seconds": 3600
+    },
+    {
+      "task_key": "silver_stg_txn_summary",
+      "description": "Port of bteq/02_stg_txn_summary.bteq",
+      "depends_on": [
+        {
+          "task_key": "bronze_ingest"
+        }
+      ],
+      "job_cluster_key": "pipeline_cluster",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Repos/retail-banking-analytics-pipeline/databricks/notebooks/silver/02_stg_txn_summary",
+        "source": "WORKSPACE"
+      },
+      "timeout_seconds": 3600
+    },
+    {
+      "task_key": "silver_stg_risk_factors",
+      "description": "Port of bteq/03_stg_risk_factors.bteq",
+      "depends_on": [
+        {
+          "task_key": "bronze_ingest"
+        }
+      ],
+      "job_cluster_key": "pipeline_cluster",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Repos/retail-banking-analytics-pipeline/databricks/notebooks/silver/03_stg_risk_factors",
+        "source": "WORKSPACE"
+      },
+      "timeout_seconds": 3600
+    },
+    {
+      "task_key": "gold_customer_segments",
+      "description": "Port of sas/01_sas_customer_segments.sas (PROC STDIZE + PROC FASTCLUS -> StandardScaler + KMeans k=5)",
+      "depends_on": [
+        {
+          "task_key": "silver_stg_customer_360"
+        }
+      ],
+      "job_cluster_key": "pipeline_cluster",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Repos/retail-banking-analytics-pipeline/databricks/notebooks/gold/01_customer_segments",
+        "source": "WORKSPACE"
+      },
+      "timeout_seconds": 3600
+    },
+    {
+      "task_key": "gold_txn_analytics",
+      "description": "Port of sas/02_sas_txn_analytics.sas (PROC RANK percentiles + PROC MEANS IQR anomaly)",
+      "depends_on": [
+        {
+          "task_key": "silver_stg_customer_360"
+        },
+        {
+          "task_key": "silver_stg_txn_summary"
+        }
+      ],
+      "job_cluster_key": "pipeline_cluster",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Repos/retail-banking-analytics-pipeline/databricks/notebooks/gold/02_txn_analytics",
+        "source": "WORKSPACE"
+      },
+      "timeout_seconds": 3600
+    },
+    {
+      "task_key": "gold_risk_scoring",
+      "description": "Port of sas/03_sas_risk_scoring.sas (PROC LOGISTIC -> pyspark.ml LogisticRegression)",
+      "depends_on": [
+        {
+          "task_key": "silver_stg_customer_360"
+        },
+        {
+          "task_key": "silver_stg_risk_factors"
+        }
+      ],
+      "job_cluster_key": "pipeline_cluster",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Repos/retail-banking-analytics-pipeline/databricks/notebooks/gold/03_risk_scoring",
+        "source": "WORKSPACE"
+      },
+      "timeout_seconds": 3600
+    },
+    {
+      "task_key": "gold_data_products",
+      "description": "Port of sas/04_sas_data_products.sas; the golden record needs all three upstream products.",
+      "depends_on": [
+        {
+          "task_key": "gold_customer_segments"
+        },
+        {
+          "task_key": "gold_txn_analytics"
+        },
+        {
+          "task_key": "gold_risk_scoring"
+        }
+      ],
+      "job_cluster_key": "pipeline_cluster",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Repos/retail-banking-analytics-pipeline/databricks/notebooks/gold/04_data_products",
+        "source": "WORKSPACE"
+      },
+      "timeout_seconds": 3600
+    },
+    {
+      "task_key": "post_run_validation",
+      "description": "Schema contract + data quality + optional reference parity. Replaces the envsubst BTEQ row-count block.",
+      "depends_on": [
+        {
+          "task_key": "gold_data_products"
+        }
+      ],
+      "job_cluster_key": "pipeline_cluster",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Repos/retail-banking-analytics-pipeline/databricks/notebooks/validation/99_validate_data_products",
+        "source": "WORKSPACE"
+      },
+      "timeout_seconds": 3600
+    }
+  ],
+  "queue": {
+    "enabled": true
+  }
+}

@@ -4,6 +4,11 @@ An end-to-end data engineering demo showing **Teradata BTEQ** scripts transformi
 operational tables into staging datasets, which then flow into **SAS** analytical
 pipelines, producing a final set of certified **data product** tables.
 
+> **Databricks port.** The same three phases are also implemented on Unity
+> Catalog + Delta + Spark under [`databricks/`](databricks/README.md),
+> orchestrated by Databricks Workflows. The Teradata/SAS artifacts below are
+> kept as the reference implementation.
+
 ## Architecture
 
 ```
@@ -59,6 +64,10 @@ demo/
 │   └── run_sas_pipeline.sh               # SAS orchestrator
 ├── orchestration/
 │   └── run_full_pipeline.sh              # End-to-end master orchestrator
+├── databricks/                            # Databricks port (see databricks/README.md)
+│   ├── notebooks/{bronze,silver,gold,validation}/
+│   ├── shared/                            # replaces sas/macros/
+│   └── workflows/pipeline_job.json        # replaces orchestration/
 └── docs/
     └── pipeline_flow.md                   # Detailed technical documentation
 ```
@@ -130,6 +139,9 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 # Dry run (print steps without executing)
 ./orchestration/run_full_pipeline.sh --dry-run
 ```
+
+On Databricks the equivalent is a Workflow run — see
+[`databricks/README.md`](databricks/README.md#running-it).
 
 ## Prerequisites
 
