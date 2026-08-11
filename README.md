@@ -131,6 +131,49 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 ./orchestration/run_full_pipeline.sh --dry-run
 ```
 
+## Cloud Teradata Cutover Validation
+
+`TD_SERVER` and `TD_LOGMECH` in `config/pipeline_config.cfg` are environment
+overridable, so the pipeline can be pointed at the migrated cloud Teradata
+(Vantage) endpoint without editing any script:
+
+```bash
+export TD_SERVER="bankdemo-vantage.env.clearscape.teradata.com"
+export TD_LOGMECH="TD2"        # cloud auth mechanism; on-prem default is LDAP
+export TD_USERNAME="svc_etl_pipeline"
+```
+
+With nothing exported the pipeline behaves exactly as before
+(`tdprod.corp.bankdemo.com` / `LDAP`).
+
+### Pre-cutover gate
+
+Run these three checks against the cloud endpoint before repointing production:
+
+```bash
+# 1. BTEQ connectivity: logon + SELECT 1 on all four DBs + row counts
+TD_SERVER="$CLOUD_HOST" TD_LOGMECH=TD2 ./orchestration/test_connectivity.sh
+
+# 2. SAS connectivity: LIBNAMEs, table validation, bulkload/fastload round-trip
+TD_SERVER="$CLOUD_HOST" TD_LOGMECH=TD2 \
+    sas -sysin sas/test_connectivity.sas -log logs/sas_conn_test.log
+
+# 3. Data-product row-count parity, old endpoint vs new
+TD_SERVER="$CLOUD_HOST" TD_SERVER_LEGACY="tdprod.corp.bankdemo.com" \
+    ./orchestration/compare_parity.sh
+```
+
+| Script | Checks | Failure mode |
+|--------|--------|--------------|
+| `orchestration/test_connectivity.sh` | BTEQ logon; `SELECT 1` against `CORE_BANKING_DB`, `TXN_PROCESSING_DB`, `ETL_STAGING_DB`, `DATA_PRODUCTS_DB`; `COUNT(*)` on `CUSTOMERS` and `TRANSACTIONS` | Exit 1, per-check log under `${LOG_DIR}` |
+| `sas/test_connectivity.sas` | `%connect_teradata` assigns `COREDB`/`TXNDB`/`STGDB`/`DPDB`; `%validate_table` on a representative table per library; `bulkload=YES`/`fastload=YES` write + read round-trip into a temp table in `DPDB` | `%abort return 1` |
+| `orchestration/compare_parity.sh` | Row counts for the four data product tables on both endpoints, diffed | Exit 1 on any mismatch |
+
+Both shell scripts accept `--dry-run` to print the checks without connecting.
+`compare_parity.sh` also accepts `--legacy <host>` and `--cloud <host>` to
+override the endpoints directly. The SAS bulkload round-trip creates and drops
+`DATA_PRODUCTS_DB.TMP_CONN_TEST`; it does not touch pipeline data.
+
 ## Prerequisites
 
 - **Teradata**: BTEQ client (TTU 17.x+), service account with SELECT on source DBs
