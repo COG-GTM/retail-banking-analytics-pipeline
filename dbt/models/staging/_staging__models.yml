@@ -1,0 +1,87 @@
+version: 2
+
+models:
+  - name: stg_customer_360
+    description: >
+      Denormalized customer-360 staging view joining customer, account and
+      address data. dbt port of bteq/01_stg_customer_360.bteq; materializes to
+      silver.stg_customer_360.
+    columns:
+      - name: customer_id
+        description: Unique customer identifier.
+        data_tests: [not_null, unique]
+      - name: age
+        description: Derived age in years from date of birth.
+      - name: tenure_months
+        description: Months since customer_since.
+      - name: customer_status
+        description: A=Active, I=Inactive (closed customers excluded).
+        data_tests:
+          - accepted_values:
+              values: ['A', 'I']
+      - name: segment_code
+      - name: primary_address
+        description: Concatenated most-recent HOME address line(s).
+      - name: state_code
+      - name: num_accounts
+      - name: num_active_accounts
+      - name: has_checking
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]
+      - name: has_savings
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]
+      - name: has_credit
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]
+      - name: has_loan
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]
+      - name: total_balance
+      - name: total_credit_limit
+      - name: credit_utilization_pct
+        description: Total credit balance / total credit limit * 100.
+
+  - name: stg_txn_summary
+    description: >
+      Aggregated transaction metrics per customer/account over a configurable
+      lookback window. dbt port of bteq/02_stg_txn_summary.bteq; materializes to
+      silver.stg_txn_summary.
+    columns:
+      - name: customer_id
+        data_tests: [not_null]
+      - name: account_id
+        data_tests: [not_null]
+      - name: account_type
+      - name: txn_count_total
+      - name: amt_total_debit
+      - name: amt_total_credit
+      - name: amt_total_fees
+      - name: distinct_merchants
+      - name: top_merchant_category
+      - name: pct_atm
+      - name: pct_pos
+      - name: pct_web
+      - name: pct_mobile
+      - name: days_since_last_txn
+
+  - name: stg_risk_factors
+    description: >
+      Pre-computed risk-indicator features per customer. dbt port of
+      bteq/03_stg_risk_factors.bteq (with the two WRK_* work tables as ephemeral
+      models); materializes to silver.stg_risk_factors.
+    columns:
+      - name: customer_id
+        data_tests: [not_null, unique]
+      - name: account_overdraft_cnt
+      - name: nsf_fee_total
+      - name: large_withdrawal_cnt
+      - name: avg_daily_balance_30d
+      - name: avg_daily_balance_90d
+      - name: balance_volatility
+      - name: credit_util_ratio
+      - name: payment_ontime_pct
+      - name: payment_late_cnt
+      - name: months_since_last_late
+      - name: external_credit_score
+      - name: debit_velocity_7d
+      - name: debit_velocity_30d
+      - name: new_merchant_cnt_30d
+      - name: international_txn_cnt
+      - name: high_risk_merchant_cnt
