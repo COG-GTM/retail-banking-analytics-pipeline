@@ -1,0 +1,60 @@
+version: 2
+
+seeds:
+  - name: customer_segments
+    description: >
+      EXTERNAL ML OUTPUT (stand-in). Behavioural customer segmentation produced
+      by the k-means clustering step in sas/01_sas_customer_segments.sas, which is
+      NOT reproduced in dbt. This seed (sourced from
+      data/03_sas_data_products/customer_segments.csv) lets customer_master_profile
+      join the segments while the clustering remains an external ML/Python step.
+      Replace with a dbt source or a dbt-python model if the warehouse supports it.
+    columns:
+      - name: customer_id
+        description: Unique customer identifier.
+        data_tests: [not_null, unique]
+      - name: segment_name
+        data_tests:
+          - accepted_values:
+              values: ['PREMIUM_WEALTH', 'ENGAGED_MAINSTREAM', 'GROWING_DIGITAL',
+                       'CREDIT_DEPENDENT', 'VALUE_BASIC']
+      - name: tenure_group
+        data_tests:
+          - accepted_values:
+              values: ['NEW (<1yr)', 'DEVELOPING (1-3yr)', 'ESTABLISHED (3-7yr)', 'LOYAL (7yr+)']
+      - name: age_group
+        data_tests:
+          - accepted_values:
+              values: ['GEN_Z', 'MILLENNIAL', 'GEN_X', 'BOOMER', 'SILENT']
+      - name: balance_tier
+        data_tests:
+          - accepted_values:
+              values: ['LOW', 'MODERATE', 'AFFLUENT', 'HIGH_NET_WORTH']
+      - name: cross_sell_flag
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]
+      - name: upsell_flag
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]
+      - name: retention_risk_flag
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]
+
+  - name: customer_risk_scores
+    description: >
+      EXTERNAL ML OUTPUT (stand-in). Composite risk scores and probability of
+      default produced by the logistic-regression step in sas/03_sas_risk_scoring.sas,
+      which is NOT reproduced in dbt. This seed (sourced from
+      data/03_sas_data_products/customer_risk_scores.csv) lets
+      customer_master_profile join risk scores while the model remains external.
+    columns:
+      - name: customer_id
+        description: Unique customer identifier.
+        data_tests: [not_null, unique]
+      - name: composite_risk_score
+      - name: risk_tier
+        data_tests:
+          - accepted_values:
+              values: ['LOW', 'MODERATE', 'ELEVATED', 'HIGH', 'CRITICAL']
+      - name: probability_of_default
+      - name: watch_list_flag
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]
+      - name: review_required_flag
+        data_tests: [{ accepted_values: { values: ['Y', 'N'] } }]

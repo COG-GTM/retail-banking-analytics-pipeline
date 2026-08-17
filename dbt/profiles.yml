@@ -1,0 +1,27 @@
+# =============================================================================
+# dbt connection profile - Retail Banking Analytics (dbt-databricks)
+# =============================================================================
+# This is a template. Credentials are read from environment variables. Run dbt
+# from the repo root with:
+#
+#   dbt <command> --project-dir dbt --profiles-dir dbt
+#
+# Set DATABRICKS_TOKEN (not stored in the repo) before running against a live
+# Databricks workspace. No secret values are committed here.
+#
+#   DATABRICKS_HOST       workspace URL, e.g. adb-1234567890123456.7.azuredatabricks.net
+#   DATABRICKS_HTTP_PATH  SQL warehouse HTTP path, e.g. /sql/1.0/warehouses/abc123
+#   DATABRICKS_TOKEN      personal access token (or use OAuth/M2M via auth_type)
+#   DATABRICKS_CATALOG    Unity Catalog catalog (defaults to retail_banking)
+# =============================================================================
+retail_banking_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: databricks
+      host: "{{ env_var('DATABRICKS_HOST', 'adb-0000000000000000.0.azuredatabricks.net') }}"
+      http_path: "{{ env_var('DATABRICKS_HTTP_PATH', '/sql/1.0/warehouses/replace-me') }}"
+      token: "{{ env_var('DATABRICKS_TOKEN', '') }}"
+      catalog: "{{ env_var('DATABRICKS_CATALOG', 'retail_banking') }}"
+      schema: "{{ env_var('DATABRICKS_SCHEMA', 'gold') }}"
+      threads: 4

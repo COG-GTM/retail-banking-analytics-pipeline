@@ -1,0 +1,66 @@
+name: 'retail_banking_analytics'
+version: '1.0.0'
+config-version: 2
+
+# Connection profile (see profiles.yml in this directory).
+profile: 'retail_banking_analytics'
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# -----------------------------------------------------------------------------
+# Unity Catalog schema mapping (medallion layout, aligned with the Databricks
+# PySpark migration under databricks/):
+#   catalog retail_banking (set in profiles.yml via DATABRICKS_CATALOG)
+#     bronze - ingested copies of the legacy source tables
+#              (was CORE_BANKING_DB / TXN_PROCESSING_DB on Teradata)
+#     silver - staging / intermediate models (was ETL_STAGING_DB)
+#     gold   - certified data products (was DATA_PRODUCTS_DB)
+# Override per-environment with --vars or environment-specific configs.
+# -----------------------------------------------------------------------------
+vars:
+  src_schema: bronze            # legacy source tables landed by the bronze ingest job
+  stg_schema: silver            # was DB_STG / ETL_STAGING_DB
+  dp_schema: gold               # was DB_DP / DATA_PRODUCTS_DB
+  lookback_months: 12           # LOOKBACK_MONTHS
+
+# NOTE: model/seed +schema values below must match the stg_schema / dp_schema
+# vars above (var() cannot be rendered inside dbt_project.yml configs, so the
+# literal Unity Catalog schema names are used directly).
+models:
+  retail_banking_analytics:
+    staging:
+      +materialized: view
+      +schema: silver
+    intermediate:
+      # Work tables (former BTEQ WRK_* tables) are ephemeral CTEs.
+      +materialized: ephemeral
+      +schema: silver
+      # Feature-engineering output that the external ML step consumes is a view.
+      int_customer_segment_features:
+        +materialized: view
+    marts:
+      +materialized: table
+      +schema: gold
+
+seeds:
+  retail_banking_analytics:
+    # Seeds stand in for the external ML model outputs; they live alongside the
+    # other certified data products.
+    +schema: gold
+    customer_segments:
+      +column_types:
+        customer_id: bigint
+        segment_id: smallint
+        subsegment_id: smallint
+    customer_risk_scores:
+      +column_types:
+        customer_id: bigint
