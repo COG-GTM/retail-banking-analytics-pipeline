@@ -39,6 +39,8 @@ PRIMARY INDEX (CUSTOMER_ID);
 -- Per-customer transaction behaviour summary with trend indicators.
 -- Refresh: Daily
 -- Consumers: Finance reporting, BI dashboards, Fraud team
+-- MIGRATED (MBA-2208 / TICKET-07): the Snowflake definition of this table lives
+-- in ddl/snowflake/02_data_product_tables_transaction_analytics.sql.
 -- -----------------------------------------------------------------------------
 CREATE MULTISET TABLE DATA_PRODUCTS_DB.TRANSACTION_ANALYTICS, NO FALLBACK
 (

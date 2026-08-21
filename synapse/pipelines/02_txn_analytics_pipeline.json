@@ -1,0 +1,85 @@
+{
+  "name": "pl_02_txn_analytics",
+  "properties": {
+    "description": "MBA-2208 / TICKET-07 - builds DATA_PRODUCTS.TRANSACTION_ANALYTICS on Synapse Spark, replacing sas/02_sas_txn_analytics.sas.",
+    "activities": [
+      {
+        "name": "spark_txn_analytics",
+        "type": "SparkJob",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 1,
+          "retryIntervalInSeconds": 300,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "sparkJob": {
+            "referenceName": "sj_txn_analytics",
+            "type": "SparkJobDefinitionReference"
+          },
+          "file": "abfss://artifacts@{workspaceStorage}/jobs/txn_analytics_job.py",
+          "args": [
+            "--reporting-period",
+            {
+              "value": "@pipeline().parameters.reporting_period",
+              "type": "Expression"
+            },
+            "--sf-database",
+            {
+              "value": "@pipeline().parameters.sf_database",
+              "type": "Expression"
+            },
+            "--sf-stg-schema",
+            {
+              "value": "@pipeline().parameters.sf_stg_schema",
+              "type": "Expression"
+            },
+            "--sf-dp-schema",
+            {
+              "value": "@pipeline().parameters.sf_dp_schema",
+              "type": "Expression"
+            },
+            "--anomaly-method",
+            {
+              "value": "@pipeline().parameters.anomaly_method",
+              "type": "Expression"
+            }
+          ],
+          "conf": {
+            "spark.jars.packages": "net.snowflake:spark-snowflake_2.12:2.15.0-spark_3.4,net.snowflake:snowflake-jdbc:3.16.1",
+            "spark.sql.session.timeZone": "UTC"
+          },
+          "numExecutors": 4
+        }
+      }
+    ],
+    "parameters": {
+      "reporting_period": {
+        "type": "string",
+        "defaultValue": "@formatDateTime(utcNow(), 'yyyy-MM')"
+      },
+      "sf_database": {
+        "type": "string",
+        "defaultValue": "ANALYTICS"
+      },
+      "sf_stg_schema": {
+        "type": "string",
+        "defaultValue": "ETL_STAGING"
+      },
+      "sf_dp_schema": {
+        "type": "string",
+        "defaultValue": "DATA_PRODUCTS"
+      },
+      "anomaly_method": {
+        "type": "string",
+        "defaultValue": "sas_parity"
+      }
+    },
+    "annotations": [
+      "MBA-2208",
+      "TICKET-07"
+    ]
+  }
+}
