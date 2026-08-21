@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: core_banking
+    description: Operational customer/account tables migrated from Teradata CORE_BANKING_DB.
+    database: "{{ env_var('SNOWFLAKE_DATABASE', 'RETAIL_BANKING') }}"
+    schema: CORE_BANKING
+    tables:
+      - name: accounts
+        identifier: ACCOUNTS
+        description: Deposit, loan and credit accounts.
+        columns:
+          - name: ACCOUNT_ID
+          - name: CUSTOMER_ID
+          - name: ACCOUNT_TYPE
