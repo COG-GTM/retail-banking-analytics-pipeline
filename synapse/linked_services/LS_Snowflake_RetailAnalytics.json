@@ -1,0 +1,72 @@
+{
+  "name": "LS_Snowflake_RetailAnalytics",
+  "type": "Microsoft.Synapse/workspaces/linkedservices",
+  "properties": {
+    "description": "Snowflake connection for the retail banking analytics pipeline (MBA-2203). Replaces the Teradata LDAP service account; authenticates as the SVC_SYNAPSE_SPARK_<env> service principal with a key pair whose private key and passphrase are resolved from Azure Key Vault at activity runtime.",
+    "annotations": [
+      "retail-banking-analytics",
+      "MBA-2203"
+    ],
+    "type": "SnowflakeV2",
+    "typeProperties": {
+      "accountIdentifier": "@{linkedService().account}",
+      "user": "@{linkedService().serviceUser}",
+      "database": "@{linkedService().database}",
+      "warehouse": "@{linkedService().warehouse}",
+      "role": "@{linkedService().role}",
+      "authenticationType": "KeyPair",
+      "privateKey": {
+        "type": "AzureKeyVaultSecret",
+        "store": {
+          "referenceName": "LS_AzureKeyVault_RetailAnalytics",
+          "type": "LinkedServiceReference",
+          "parameters": {
+            "vaultName": "@{linkedService().vaultName}"
+          }
+        },
+        "secretName": "snowflake-svc-synapse-private-key"
+      },
+      "privateKeyPassphrase": {
+        "type": "AzureKeyVaultSecret",
+        "store": {
+          "referenceName": "LS_AzureKeyVault_RetailAnalytics",
+          "type": "LinkedServiceReference",
+          "parameters": {
+            "vaultName": "@{linkedService().vaultName}"
+          }
+        },
+        "secretName": "snowflake-svc-synapse-key-passphrase"
+      }
+    },
+    "parameters": {
+      "account": {
+        "type": "String",
+        "defaultValue": "bankdemo-retail_analytics"
+      },
+      "serviceUser": {
+        "type": "String",
+        "defaultValue": "SVC_SYNAPSE_SPARK_DEV"
+      },
+      "database": {
+        "type": "String",
+        "defaultValue": "DATA_PRODUCTS_DB"
+      },
+      "warehouse": {
+        "type": "String",
+        "defaultValue": "WH_RB_SPARK_DEV"
+      },
+      "role": {
+        "type": "String",
+        "defaultValue": "RB_TRANSFORMER_DEV"
+      },
+      "vaultName": {
+        "type": "String",
+        "defaultValue": "kv-retail-analytics-dev"
+      }
+    },
+    "connectVia": {
+      "referenceName": "AutoResolveIntegrationRuntime",
+      "type": "IntegrationRuntimeReference"
+    }
+  }
+}

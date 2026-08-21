@@ -1,0 +1,21 @@
+{
+  "name": "LS_AzureKeyVault_RetailAnalytics",
+  "type": "Microsoft.Synapse/workspaces/linkedservices",
+  "properties": {
+    "description": "Azure Key Vault holding all Snowflake credentials for the retail banking analytics pipeline (MBA-2203). Authenticated with the Synapse workspace managed identity; no secret is stored in the workspace or in source control.",
+    "annotations": [
+      "retail-banking-analytics",
+      "MBA-2203"
+    ],
+    "type": "AzureKeyVault",
+    "typeProperties": {
+      "baseUrl": "https://@{linkedService().vaultName}.vault.azure.net/"
+    },
+    "parameters": {
+      "vaultName": {
+        "type": "String",
+        "defaultValue": "kv-retail-analytics-dev"
+      }
+    }
+  }
+}

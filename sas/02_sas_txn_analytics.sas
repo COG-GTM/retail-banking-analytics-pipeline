@@ -162,7 +162,7 @@ run;
 
 proc sql;
     connect to teradata (server="&TD_SERVER." user="&TD_USERNAME."
-                         password="{SAS004}XXXXXXXXXXXXXXXXXXXXXXXX" logmech=LDAP);
+                         password="&TD_PASSWORD." logmech=&TD_LOGMECH.);
     execute (
         DELETE FROM DATA_PRODUCTS_DB.TRANSACTION_ANALYTICS
         WHERE REPORTING_PERIOD = %unquote(%str(%')&REPORTING_PERIOD.%str(%'))
