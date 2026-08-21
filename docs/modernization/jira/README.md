@@ -16,18 +16,21 @@ Edit `tickets.json` first — the markdown files mirror it.
 
 ## Ticket map
 
-| Ticket | Summary | Blocked by |
-|--------|---------|-----------|
-| [TICKET-01](./TICKET-01-snowflake-ddl-migration.md) | Snowflake DDL migration | — |
-| [TICKET-02](./TICKET-02-snowflake-environment-security.md) | Snowflake environment, roles & secrets | — |
-| [TICKET-03](./TICKET-03-migrate-stg-customer-360.md) | Migrate `01_stg_customer_360.bteq` | 01, 02 |
-| [TICKET-04](./TICKET-04-migrate-stg-txn-summary.md) | Migrate `02_stg_txn_summary.bteq` | 01, 02 |
-| [TICKET-05](./TICKET-05-migrate-stg-risk-factors.md) | Migrate `03_stg_risk_factors.bteq` | 01, 02 |
-| [TICKET-06](./TICKET-06-migrate-sas-customer-segments.md) | Migrate `01_sas_customer_segments.sas` | 03 |
-| [TICKET-07](./TICKET-07-migrate-sas-txn-analytics.md) | Migrate `02_sas_txn_analytics.sas` | 04 |
-| [TICKET-08](./TICKET-08-migrate-sas-risk-scoring.md) | Migrate `03_sas_risk_scoring.sas` | 03, 05 |
-| [TICKET-09](./TICKET-09-migrate-sas-data-products.md) | Migrate `04_sas_data_products.sas` + macros | 03, 06, 07, 08 |
-| [TICKET-10](./TICKET-10-orchestration-synapse-pipelines.md) | Synapse Pipelines orchestration | 01–09 |
+Already created in the `COG-GTM` Jira project (key `MBA`) at https://cog-gtm.atlassian.net, with the
+`Blocks` links below applied.
+
+| Ticket | Summary | Blocked by | Jira |
+|--------|---------|-----------|------|
+| [TICKET-01](./TICKET-01-snowflake-ddl-migration.md) | Snowflake DDL migration | — | [MBA-2202](https://cog-gtm.atlassian.net/browse/MBA-2202) |
+| [TICKET-02](./TICKET-02-snowflake-environment-security.md) | Snowflake environment, roles & secrets | — | [MBA-2203](https://cog-gtm.atlassian.net/browse/MBA-2203) |
+| [TICKET-03](./TICKET-03-migrate-stg-customer-360.md) | Migrate `01_stg_customer_360.bteq` | 01, 02 | [MBA-2204](https://cog-gtm.atlassian.net/browse/MBA-2204) |
+| [TICKET-04](./TICKET-04-migrate-stg-txn-summary.md) | Migrate `02_stg_txn_summary.bteq` | 01, 02 | [MBA-2205](https://cog-gtm.atlassian.net/browse/MBA-2205) |
+| [TICKET-05](./TICKET-05-migrate-stg-risk-factors.md) | Migrate `03_stg_risk_factors.bteq` | 01, 02 | [MBA-2206](https://cog-gtm.atlassian.net/browse/MBA-2206) |
+| [TICKET-06](./TICKET-06-migrate-sas-customer-segments.md) | Migrate `01_sas_customer_segments.sas` | 03 | [MBA-2207](https://cog-gtm.atlassian.net/browse/MBA-2207) |
+| [TICKET-07](./TICKET-07-migrate-sas-txn-analytics.md) | Migrate `02_sas_txn_analytics.sas` | 04 | [MBA-2208](https://cog-gtm.atlassian.net/browse/MBA-2208) |
+| [TICKET-08](./TICKET-08-migrate-sas-risk-scoring.md) | Migrate `03_sas_risk_scoring.sas` | 03, 05 | [MBA-2209](https://cog-gtm.atlassian.net/browse/MBA-2209) |
+| [TICKET-09](./TICKET-09-migrate-sas-data-products.md) | Migrate `04_sas_data_products.sas` + macros | 03, 06, 07, 08 | [MBA-2210](https://cog-gtm.atlassian.net/browse/MBA-2210) |
+| [TICKET-10](./TICKET-10-orchestration-synapse-pipelines.md) | Synapse Pipelines orchestration | 01–09 | [MBA-2211](https://cog-gtm.atlassian.net/browse/MBA-2211) |
 
 ## Required environment variables
 

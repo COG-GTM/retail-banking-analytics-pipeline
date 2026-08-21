@@ -2,13 +2,22 @@
   "repository": "COG-GTM/retail-banking-analytics-pipeline",
   "program": "Teradata BTEQ + SAS to Snowflake + Azure Synapse modernization",
   "default_issue_type": "Story",
-  "default_labels": ["migration", "snowflake", "azure-synapse"],
+  "default_labels": [
+    "migration",
+    "snowflake",
+    "azure-synapse"
+  ],
   "tickets": [
     {
       "id": "TICKET-01",
       "summary": "Snowflake DDL migration for source, staging and data product tables in COG-GTM/retail-banking-analytics-pipeline",
       "issue_type": "Story",
-      "labels": ["migration", "snowflake", "ddl", "teradata"],
+      "labels": [
+        "migration",
+        "snowflake",
+        "ddl",
+        "teradata"
+      ],
       "dependencies": [],
       "affected_files": [
         "ddl/00_source_tables.sql",
@@ -30,13 +39,19 @@
         "No Teradata-only keyword (MULTISET, NO FALLBACK, PRIMARY INDEX, COLLECT STATISTICS, CASESPECIFIC, RANGE_N) remains in the migrated scripts.",
         "A documented type-mapping table records every Teradata type and its Snowflake equivalent.",
         "Scripts are idempotent and safe to re-run in DEV/UAT/PROD."
-      ]
+      ],
+      "jira_key": "MBA-2202"
     },
     {
       "id": "TICKET-02",
       "summary": "Snowflake environment, role and secret management setup in COG-GTM/retail-banking-analytics-pipeline",
       "issue_type": "Story",
-      "labels": ["migration", "snowflake", "security", "azure-key-vault"],
+      "labels": [
+        "migration",
+        "snowflake",
+        "security",
+        "azure-key-vault"
+      ],
       "dependencies": [],
       "affected_files": [
         "sas/macros/connect_teradata.sas",
@@ -56,14 +71,23 @@
         "All secrets resolve from Azure Key Vault at runtime; a repo scan finds no credential literals.",
         "Least-privilege is demonstrated: the loader role cannot read data product tables it does not own, and the analytics role has read-only access.",
         "Credential rotation is documented and tested once end to end."
-      ]
+      ],
+      "jira_key": "MBA-2203"
     },
     {
       "id": "TICKET-03",
       "summary": "Migrate bteq/01_stg_customer_360.bteq to Snowflake SQL/dbt in COG-GTM/retail-banking-analytics-pipeline",
       "issue_type": "Story",
-      "labels": ["migration", "snowflake", "dbt", "bteq"],
-      "dependencies": ["TICKET-01", "TICKET-02"],
+      "labels": [
+        "migration",
+        "snowflake",
+        "dbt",
+        "bteq"
+      ],
+      "dependencies": [
+        "TICKET-01",
+        "TICKET-02"
+      ],
       "affected_files": [
         "bteq/01_stg_customer_360.bteq",
         "ddl/01_staging_tables.sql"
@@ -83,14 +107,23 @@
         "A zero-row result fails the run rather than publishing an empty table.",
         "Each run writes a row to the replacement run-log with step name, row counts and duration.",
         "Model is covered by dbt tests for uniqueness of CUSTOMER_ID and not-null of key columns."
-      ]
+      ],
+      "jira_key": "MBA-2204"
     },
     {
       "id": "TICKET-04",
       "summary": "Migrate bteq/02_stg_txn_summary.bteq to Snowflake SQL/dbt in COG-GTM/retail-banking-analytics-pipeline",
       "issue_type": "Story",
-      "labels": ["migration", "snowflake", "dbt", "bteq"],
-      "dependencies": ["TICKET-01", "TICKET-02"],
+      "labels": [
+        "migration",
+        "snowflake",
+        "dbt",
+        "bteq"
+      ],
+      "dependencies": [
+        "TICKET-01",
+        "TICKET-02"
+      ],
       "affected_files": [
         "bteq/02_stg_txn_summary.bteq",
         "config/pipeline_config.cfg",
@@ -110,14 +143,23 @@
         "Changing the lookback parameter changes the window with no code edit.",
         "Zero-row output fails the run and is logged.",
         "dbt tests cover grain uniqueness and non-negative amount metrics."
-      ]
+      ],
+      "jira_key": "MBA-2205"
     },
     {
       "id": "TICKET-05",
       "summary": "Migrate bteq/03_stg_risk_factors.bteq to Snowflake SQL/dbt in COG-GTM/retail-banking-analytics-pipeline",
       "issue_type": "Story",
-      "labels": ["migration", "snowflake", "dbt", "bteq"],
-      "dependencies": ["TICKET-01", "TICKET-02"],
+      "labels": [
+        "migration",
+        "snowflake",
+        "dbt",
+        "bteq"
+      ],
+      "dependencies": [
+        "TICKET-01",
+        "TICKET-02"
+      ],
       "affected_files": [
         "bteq/03_stg_risk_factors.bteq",
         "ddl/01_staging_tables.sql"
@@ -136,14 +178,23 @@
         "No orphaned work tables remain after a run.",
         "Zero-row output fails the run and is logged.",
         "dbt tests cover grain uniqueness and feature range/not-null expectations."
-      ]
+      ],
+      "jira_key": "MBA-2206"
     },
     {
       "id": "TICKET-06",
       "summary": "Migrate sas/01_sas_customer_segments.sas to Synapse Spark in COG-GTM/retail-banking-analytics-pipeline",
       "issue_type": "Story",
-      "labels": ["migration", "azure-synapse", "pyspark", "sas", "ml"],
-      "dependencies": ["TICKET-03"],
+      "labels": [
+        "migration",
+        "azure-synapse",
+        "pyspark",
+        "sas",
+        "ml"
+      ],
+      "dependencies": [
+        "TICKET-03"
+      ],
       "affected_files": [
         "sas/01_sas_customer_segments.sas",
         "ddl/02_data_product_tables.sql"
@@ -162,14 +213,22 @@
         "Segment labels, LTV scores and action flags reconcile with the SAS output for the reconciliation cohort.",
         "The run is reproducible: same input plus same seed yields identical assignments.",
         "Row counts and null rates on CUSTOMER_SEGMENTS are validated before publish."
-      ]
+      ],
+      "jira_key": "MBA-2207"
     },
     {
       "id": "TICKET-07",
       "summary": "Migrate sas/02_sas_txn_analytics.sas to Synapse Spark in COG-GTM/retail-banking-analytics-pipeline",
       "issue_type": "Story",
-      "labels": ["migration", "azure-synapse", "pyspark", "sas"],
-      "dependencies": ["TICKET-04"],
+      "labels": [
+        "migration",
+        "azure-synapse",
+        "pyspark",
+        "sas"
+      ],
+      "dependencies": [
+        "TICKET-04"
+      ],
       "affected_files": [
         "sas/02_sas_txn_analytics.sas",
         "ddl/02_data_product_tables.sql"
@@ -188,14 +247,24 @@
         "TRANSACTION_ANALYTICS is written to Snowflake with the same schema as the existing data product.",
         "Row-count and null-rate validation runs before publish.",
         "The job runs unattended on Synapse Spark and fails loudly on validation errors."
-      ]
+      ],
+      "jira_key": "MBA-2208"
     },
     {
       "id": "TICKET-08",
       "summary": "Migrate sas/03_sas_risk_scoring.sas to Synapse Spark in COG-GTM/retail-banking-analytics-pipeline",
       "issue_type": "Story",
-      "labels": ["migration", "azure-synapse", "pyspark", "sas", "ml"],
-      "dependencies": ["TICKET-05", "TICKET-03"],
+      "labels": [
+        "migration",
+        "azure-synapse",
+        "pyspark",
+        "sas",
+        "ml"
+      ],
+      "dependencies": [
+        "TICKET-05",
+        "TICKET-03"
+      ],
       "affected_files": [
         "sas/03_sas_risk_scoring.sas",
         "config/pipeline_config.cfg",
@@ -215,14 +284,25 @@
         "RISK_SCORE_THRESHOLD is a pipeline parameter, not a hardcoded value.",
         "Risk drivers match the SAS driver logic for a sampled set of customers.",
         "CUSTOMER_RISK_SCORES is validated for row counts, score ranges and tier distribution before publish."
-      ]
+      ],
+      "jira_key": "MBA-2209"
     },
     {
       "id": "TICKET-09",
       "summary": "Migrate sas/04_sas_data_products.sas and shared SAS macros to Synapse Spark in COG-GTM/retail-banking-analytics-pipeline",
       "issue_type": "Story",
-      "labels": ["migration", "azure-synapse", "pyspark", "sas"],
-      "dependencies": ["TICKET-06", "TICKET-07", "TICKET-08", "TICKET-03"],
+      "labels": [
+        "migration",
+        "azure-synapse",
+        "pyspark",
+        "sas"
+      ],
+      "dependencies": [
+        "TICKET-06",
+        "TICKET-07",
+        "TICKET-08",
+        "TICKET-03"
+      ],
       "affected_files": [
         "sas/04_sas_data_products.sas",
         "sas/macros/connect_teradata.sas",
@@ -245,14 +325,29 @@
         "The three macros are fully replaced by the shared Python module and no job references SAS macros.",
         "Validation failures abort the run and are recorded in the run-log.",
         "The shared module has unit tests running in CI."
-      ]
+      ],
+      "jira_key": "MBA-2210"
     },
     {
       "id": "TICKET-10",
       "summary": "Orchestration migration from shell scripts to Azure Synapse Pipelines in COG-GTM/retail-banking-analytics-pipeline",
       "issue_type": "Story",
-      "labels": ["migration", "azure-synapse", "orchestration"],
-      "dependencies": ["TICKET-01", "TICKET-02", "TICKET-03", "TICKET-04", "TICKET-05", "TICKET-06", "TICKET-07", "TICKET-08", "TICKET-09"],
+      "labels": [
+        "migration",
+        "azure-synapse",
+        "orchestration"
+      ],
+      "dependencies": [
+        "TICKET-01",
+        "TICKET-02",
+        "TICKET-03",
+        "TICKET-04",
+        "TICKET-05",
+        "TICKET-06",
+        "TICKET-07",
+        "TICKET-08",
+        "TICKET-09"
+      ],
       "affected_files": [
         "orchestration/run_full_pipeline.sh",
         "bteq/run_bteq_pipeline.sh",
@@ -277,7 +372,10 @@
         "Post-run row-count validation fails the pipeline when thresholds are breached.",
         "No configuration value or secret is hardcoded: all come from pipeline parameters or Key Vault.",
         "The pipeline definition is version-controlled and deployable to DEV/UAT/PROD without manual edits."
-      ]
+      ],
+      "jira_key": "MBA-2211"
     }
-  ]
+  ],
+  "jira_site": "https://cog-gtm.atlassian.net",
+  "jira_project_key": "MBA"
 }
