@@ -10,6 +10,10 @@
 -- Denormalized customer view joining customer, account, and address data.
 -- Populated by: bteq/01_stg_customer_360.bteq
 -- Consumed by:  sas/01_sas_customer_segments.sas
+-- MIGRATION (MBA-2204 / TICKET-03): superseded on Snowflake by the dbt model
+--   dbt/models/staging/stg_customer_360.sql; the Snowflake column contract and
+--   Teradata -> Snowflake type mapping live in ddl/snowflake/01_staging_tables.sql.
+--   This Teradata DDL is retained until the legacy pipeline is decommissioned.
 -- -----------------------------------------------------------------------------
 CREATE MULTISET TABLE ETL_STAGING_DB.STG_CUSTOMER_360, NO FALLBACK
 (
