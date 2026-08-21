@@ -1,0 +1,381 @@
+{
+  "repository": "COG-GTM/retail-banking-analytics-pipeline",
+  "program": "Teradata BTEQ + SAS to Snowflake + Azure Synapse modernization",
+  "default_issue_type": "Story",
+  "default_labels": [
+    "migration",
+    "snowflake",
+    "azure-synapse"
+  ],
+  "tickets": [
+    {
+      "id": "TICKET-01",
+      "summary": "Snowflake DDL migration for source, staging and data product tables in COG-GTM/retail-banking-analytics-pipeline",
+      "issue_type": "Story",
+      "labels": [
+        "migration",
+        "snowflake",
+        "ddl",
+        "teradata"
+      ],
+      "dependencies": [],
+      "affected_files": [
+        "ddl/00_source_tables.sql",
+        "ddl/01_staging_tables.sql",
+        "ddl/02_data_product_tables.sql"
+      ],
+      "context": "All table definitions are written in Teradata DDL and rely on Teradata-only physical storage constructs. Snowflake has no concept of primary indexes, fallback protection or manual statistics collection, so the DDL must be rewritten rather than lifted and shifted.",
+      "scope": [
+        "Translate every CREATE TABLE statement in ddl/00_source_tables.sql, ddl/01_staging_tables.sql and ddl/02_data_product_tables.sql to Snowflake syntax.",
+        "Remove Teradata-only clauses: MULTISET, NO FALLBACK, PRIMARY INDEX, COLLECT STATISTICS, CHARACTER SET LATIN NOT CASESPECIFIC, RANGE_N partitioning and FORMAT column attributes.",
+        "Map data types: TIMESTAMP(6) -> TIMESTAMP_NTZ, DECIMAL(p,s) -> NUMBER(p,s), CHAR(n)/VARCHAR(n) -> VARCHAR(n), BYTEINT/SMALLINT -> NUMBER, DATE -> DATE.",
+        "Replace RANGE_N partitioning on transaction tables with Snowflake clustering keys where the access pattern justifies it.",
+        "Define the Snowflake database and schema layout replacing CORE_BANKING_DB, TXN_PROCESSING_DB, ETL_STAGING_DB and DATA_PRODUCTS_DB, with environment suffixes for DEV/UAT/PROD.",
+        "Keep the migrated DDL under source control as idempotent, re-runnable scripts (CREATE OR REPLACE / CREATE IF NOT EXISTS)."
+      ],
+      "acceptance_criteria": [
+        "Snowflake DDL scripts execute end to end against a clean Snowflake account with no syntax errors.",
+        "Every table present in the Teradata DDL exists in Snowflake with equivalent column names, order, nullability and precision.",
+        "No Teradata-only keyword (MULTISET, NO FALLBACK, PRIMARY INDEX, COLLECT STATISTICS, CASESPECIFIC, RANGE_N) remains in the migrated scripts.",
+        "A documented type-mapping table records every Teradata type and its Snowflake equivalent.",
+        "Scripts are idempotent and safe to re-run in DEV/UAT/PROD."
+      ],
+      "jira_key": "MBA-2202"
+    },
+    {
+      "id": "TICKET-02",
+      "summary": "Snowflake environment, role and secret management setup in COG-GTM/retail-banking-analytics-pipeline",
+      "issue_type": "Story",
+      "labels": [
+        "migration",
+        "snowflake",
+        "security",
+        "azure-key-vault"
+      ],
+      "dependencies": [],
+      "affected_files": [
+        "sas/macros/connect_teradata.sas",
+        "config/pipeline_config.cfg"
+      ],
+      "context": "The pipeline authenticates to Teradata with an LDAP service account (TD_USERNAME, TD_LOGMECH) and stores {SAS004}-encoded passwords inline in sas/macros/connect_teradata.sas. Snowflake needs a proper warehouse/role/grant model and credentials sourced from Azure Key Vault instead of source-controlled secrets.",
+      "scope": [
+        "Define Snowflake warehouses sized per workload (ELT transformation, Spark read/write, ad-hoc analytics) with auto-suspend and resource monitors.",
+        "Define functional roles (loader, transformer, analytics reader, admin) and grant hierarchies over the staging and data product databases from TICKET-01.",
+        "Create the service principal used by Azure Synapse and configure key-pair or OAuth authentication in place of LDAP username/password.",
+        "Store the private key/OAuth secret in Azure Key Vault and reference it from Synapse linked services; remove the {SAS004} encoded passwords and hardcoded TD_SERVER/TD_USERNAME/TD_LOGMECH values.",
+        "Document the credential rotation procedure and the least-privilege grant matrix."
+      ],
+      "acceptance_criteria": [
+        "Warehouses, roles and grants are created by re-runnable scripts held in the repo.",
+        "The Synapse service principal can connect to Snowflake using key-pair or OAuth auth with no password anywhere in the repo.",
+        "All secrets resolve from Azure Key Vault at runtime; a repo scan finds no credential literals.",
+        "Least-privilege is demonstrated: the loader role cannot read data product tables it does not own, and the analytics role has read-only access.",
+        "Credential rotation is documented and tested once end to end."
+      ],
+      "jira_key": "MBA-2203"
+    },
+    {
+      "id": "TICKET-03",
+      "summary": "Migrate bteq/01_stg_customer_360.bteq to Snowflake SQL/dbt in COG-GTM/retail-banking-analytics-pipeline",
+      "issue_type": "Story",
+      "labels": [
+        "migration",
+        "snowflake",
+        "dbt",
+        "bteq"
+      ],
+      "dependencies": [
+        "TICKET-01",
+        "TICKET-02"
+      ],
+      "affected_files": [
+        "bteq/01_stg_customer_360.bteq",
+        "ddl/01_staging_tables.sql"
+      ],
+      "context": "01_stg_customer_360.bteq builds the denormalized STG_CUSTOMER_360 view of customers, accounts and addresses using LEFT JOINs, QUALIFY ROW_NUMBER deduplication and CASE-based product flags. Its control flow depends on BTEQ dot commands that have no Snowflake equivalent.",
+      "scope": [
+        "Rewrite the customer-360 denormalization as a Snowflake SQL / dbt model producing STG_CUSTOMER_360.",
+        "Port the LEFT JOINs across CUSTOMERS, ACCOUNTS and ADDRESSES, the QUALIFY ROW_NUMBER primary-address selection, CASE-derived product flags (HAS_CHECKING/HAS_SAVINGS/HAS_CREDIT/HAS_LOAN), tenure/age derivations and the credit utilization percentage.",
+        "Replace .SET ERRORLEVEL / .IF ERRORCODE <> 0 THEN .EXIT fail-fast handling with dbt run failure semantics or Synapse activity failure propagation.",
+        "Replace the .IF ACTIVITYCOUNT = 0 THEN .EXIT 99 zero-row check with a dbt test or explicit row-count assertion.",
+        "Replace the ETL_RUN_LOG audit insert with the shared Snowflake run-log mechanism.",
+        "Drop COLLECT STATISTICS calls."
+      ],
+      "acceptance_criteria": [
+        "STG_CUSTOMER_360 in Snowflake matches the Teradata output row for row on a reconciliation run (row counts and column-level checksums).",
+        "Credit utilization, tenure months, age and all product flags reconcile exactly, including divide-by-zero and NULL handling.",
+        "A zero-row result fails the run rather than publishing an empty table.",
+        "Each run writes a row to the replacement run-log with step name, row counts and duration.",
+        "Model is covered by dbt tests for uniqueness of CUSTOMER_ID and not-null of key columns."
+      ],
+      "jira_key": "MBA-2204"
+    },
+    {
+      "id": "TICKET-04",
+      "summary": "Migrate bteq/02_stg_txn_summary.bteq to Snowflake SQL/dbt in COG-GTM/retail-banking-analytics-pipeline",
+      "issue_type": "Story",
+      "labels": [
+        "migration",
+        "snowflake",
+        "dbt",
+        "bteq"
+      ],
+      "dependencies": [
+        "TICKET-01",
+        "TICKET-02"
+      ],
+      "affected_files": [
+        "bteq/02_stg_txn_summary.bteq",
+        "config/pipeline_config.cfg",
+        "ddl/01_staging_tables.sql"
+      ],
+      "context": "02_stg_txn_summary.bteq aggregates transactions per customer over a configurable lookback window, using Teradata volatile tables to hold run parameters and computing channel-mix percentages alongside SUM/AVG/COUNT metrics.",
+      "scope": [
+        "Rewrite the transaction aggregation as a Snowflake SQL / dbt model producing STG_TXN_SUMMARY.",
+        "Port SUM/AVG/COUNT metrics, debit/credit/fee splits, revenue-flag aggregation and channel-mix percentage calculations.",
+        "Replace Teradata volatile parameter tables with dbt vars / Snowflake session variables or Synapse pipeline parameters.",
+        "Honor LOOKBACK_MONTHS (currently 12 in config/pipeline_config.cfg) as an injected parameter rather than a shell environment variable.",
+        "Replace BTEQ error handling, ACTIVITYCOUNT validation and ETL_RUN_LOG inserts as in TICKET-03."
+      ],
+      "acceptance_criteria": [
+        "STG_TXN_SUMMARY reconciles with the Teradata output for the same lookback window (row counts and per-column sums).",
+        "Channel-mix percentages sum to 100 (within rounding tolerance) for every customer with transactions.",
+        "Changing the lookback parameter changes the window with no code edit.",
+        "Zero-row output fails the run and is logged.",
+        "dbt tests cover grain uniqueness and non-negative amount metrics."
+      ],
+      "jira_key": "MBA-2205"
+    },
+    {
+      "id": "TICKET-05",
+      "summary": "Migrate bteq/03_stg_risk_factors.bteq to Snowflake SQL/dbt in COG-GTM/retail-banking-analytics-pipeline",
+      "issue_type": "Story",
+      "labels": [
+        "migration",
+        "snowflake",
+        "dbt",
+        "bteq"
+      ],
+      "dependencies": [
+        "TICKET-01",
+        "TICKET-02"
+      ],
+      "affected_files": [
+        "bteq/03_stg_risk_factors.bteq",
+        "ddl/01_staging_tables.sql"
+      ],
+      "context": "03_stg_risk_factors.bteq engineers risk features through several intermediate work tables, computing STDDEV_POP-based volatility, 7-day and 30-day debit velocity and multi-pass joins before assembling STG_RISK_FACTORS, then drops its work tables.",
+      "scope": [
+        "Rewrite the risk feature engineering as Snowflake SQL / dbt models producing STG_RISK_FACTORS.",
+        "Express the intermediate work tables as ephemeral/CTE dbt models or transient Snowflake tables instead of Teradata work tables plus explicit DROP cleanup.",
+        "Port STDDEV_POP volatility measures, 7-day and 30-day debit velocity calculations and the multi-pass joins across TRANSACTIONS, ACCOUNTS and CUSTOMERS.",
+        "Replace BTEQ error handling, ACTIVITYCOUNT validation and ETL_RUN_LOG inserts as in TICKET-03.",
+        "Verify Snowflake window-function semantics match Teradata for the velocity windows, especially at partition boundaries and for customers with sparse activity."
+      ],
+      "acceptance_criteria": [
+        "STG_RISK_FACTORS reconciles with the Teradata output row for row, including customers with no transactions in the window.",
+        "Volatility and velocity features match Teradata within an agreed floating-point tolerance.",
+        "No orphaned work tables remain after a run.",
+        "Zero-row output fails the run and is logged.",
+        "dbt tests cover grain uniqueness and feature range/not-null expectations."
+      ],
+      "jira_key": "MBA-2206"
+    },
+    {
+      "id": "TICKET-06",
+      "summary": "Migrate sas/01_sas_customer_segments.sas to Synapse Spark in COG-GTM/retail-banking-analytics-pipeline",
+      "issue_type": "Story",
+      "labels": [
+        "migration",
+        "azure-synapse",
+        "pyspark",
+        "sas",
+        "ml"
+      ],
+      "dependencies": [
+        "TICKET-03"
+      ],
+      "affected_files": [
+        "sas/01_sas_customer_segments.sas",
+        "ddl/02_data_product_tables.sql"
+      ],
+      "context": "01_sas_customer_segments.sas standardizes engineered features with PROC STDIZE and clusters customers into five behavioural segments with PROC FASTCLUS, then loads CUSTOMER_SEGMENTS with LTV, engagement and action flags.",
+      "scope": [
+        "Reimplement the feature engineering step (tenure, balance, product-holding and engagement features) in PySpark reading STG_CUSTOMER_360 from Snowflake.",
+        "Replace PROC STDIZE with a Spark ML StandardScaler (or equivalent) using the same standardization method.",
+        "Replace PROC FASTCLUS k-means (k=5) with Spark MLlib KMeans or scikit-learn, with a fixed seed for reproducibility.",
+        "Reproduce the segment labelling rules, LTV score, digital engagement metric and upsell/cross-sell/retention action flags.",
+        "Write CUSTOMER_SEGMENTS back to Snowflake using the Snowflake Spark connector, and run the job as a Synapse Spark notebook/job definition."
+      ],
+      "acceptance_criteria": [
+        "The PySpark job runs on Synapse Spark and writes CUSTOMER_SEGMENTS to Snowflake.",
+        "Cluster assignments align with the SAS baseline for an agreed majority of customers (documented threshold), with differences explained by cluster-label permutation only.",
+        "Segment labels, LTV scores and action flags reconcile with the SAS output for the reconciliation cohort.",
+        "The run is reproducible: same input plus same seed yields identical assignments.",
+        "Row counts and null rates on CUSTOMER_SEGMENTS are validated before publish."
+      ],
+      "jira_key": "MBA-2207"
+    },
+    {
+      "id": "TICKET-07",
+      "summary": "Migrate sas/02_sas_txn_analytics.sas to Synapse Spark in COG-GTM/retail-banking-analytics-pipeline",
+      "issue_type": "Story",
+      "labels": [
+        "migration",
+        "azure-synapse",
+        "pyspark",
+        "sas"
+      ],
+      "dependencies": [
+        "TICKET-04"
+      ],
+      "affected_files": [
+        "sas/02_sas_txn_analytics.sas",
+        "ddl/02_data_product_tables.sql"
+      ],
+      "context": "02_sas_txn_analytics.sas ranks customer spend into percentiles with PROC RANK and flags anomalies using IQR bounds derived from PROC MEANS, publishing TRANSACTION_ANALYTICS.",
+      "scope": [
+        "Reimplement percentile ranking (PROC RANK GROUPS) in PySpark using window functions (ntile/percent_rank), matching SAS tie-handling.",
+        "Reimplement the PROC MEANS quartile computation and IQR-based anomaly bounds (Q1 - 1.5*IQR, Q3 + 1.5*IQR) in PySpark, matching the SAS quantile definition.",
+        "Port spend-trend metrics and anomaly flags to the same output columns.",
+        "Read STG_TXN_SUMMARY from and write TRANSACTION_ANALYTICS to Snowflake via the Spark connector.",
+        "Package as a Synapse Spark job invoked by the orchestration pipeline."
+      ],
+      "acceptance_criteria": [
+        "Percentile buckets match the SAS output for the reconciliation dataset, including tied values.",
+        "IQR bounds and resulting anomaly flags match SAS within an agreed tolerance, with the quantile definition documented.",
+        "TRANSACTION_ANALYTICS is written to Snowflake with the same schema as the existing data product.",
+        "Row-count and null-rate validation runs before publish.",
+        "The job runs unattended on Synapse Spark and fails loudly on validation errors."
+      ],
+      "jira_key": "MBA-2208"
+    },
+    {
+      "id": "TICKET-08",
+      "summary": "Migrate sas/03_sas_risk_scoring.sas to Synapse Spark in COG-GTM/retail-banking-analytics-pipeline",
+      "issue_type": "Story",
+      "labels": [
+        "migration",
+        "azure-synapse",
+        "pyspark",
+        "sas",
+        "ml"
+      ],
+      "dependencies": [
+        "TICKET-05",
+        "TICKET-03"
+      ],
+      "affected_files": [
+        "sas/03_sas_risk_scoring.sas",
+        "config/pipeline_config.cfg",
+        "ddl/02_data_product_tables.sql"
+      ],
+      "context": "03_sas_risk_scoring.sas fits a stepwise PROC LOGISTIC model over STG_RISK_FACTORS and STG_CUSTOMER_360, blends the predicted probability into a weighted composite risk score, assigns LOW/MODERATE/ELEVATED tiers using RISK_SCORE_THRESHOLD and derives the top risk drivers per customer.",
+      "scope": [
+        "Reimplement the logistic regression in PySpark (MLlib LogisticRegression or statsmodels/scikit-learn on the driver) including an explicit replacement for SAS stepwise variable selection.",
+        "Port the weighted composite risk score formula and the risk-tier classification, preserving RISK_SCORE_THRESHOLD (currently 700) as an injected parameter.",
+        "Reimplement the risk-driver logic that reports the top contributing factors per customer.",
+        "Persist model coefficients and selected variables for auditability alongside each scoring run.",
+        "Write CUSTOMER_RISK_SCORES to Snowflake and run the job on Synapse Spark."
+      ],
+      "acceptance_criteria": [
+        "Model coefficients and the selected variable set are documented and compared against the SAS model, with differences explained.",
+        "Composite scores and tier assignments reconcile with SAS within an agreed tolerance for the reconciliation cohort.",
+        "RISK_SCORE_THRESHOLD is a pipeline parameter, not a hardcoded value.",
+        "Risk drivers match the SAS driver logic for a sampled set of customers.",
+        "CUSTOMER_RISK_SCORES is validated for row counts, score ranges and tier distribution before publish."
+      ],
+      "jira_key": "MBA-2209"
+    },
+    {
+      "id": "TICKET-09",
+      "summary": "Migrate sas/04_sas_data_products.sas and shared SAS macros to Synapse Spark in COG-GTM/retail-banking-analytics-pipeline",
+      "issue_type": "Story",
+      "labels": [
+        "migration",
+        "azure-synapse",
+        "pyspark",
+        "sas"
+      ],
+      "dependencies": [
+        "TICKET-06",
+        "TICKET-07",
+        "TICKET-08",
+        "TICKET-03"
+      ],
+      "affected_files": [
+        "sas/04_sas_data_products.sas",
+        "sas/macros/connect_teradata.sas",
+        "sas/macros/log_step.sas",
+        "sas/macros/validate_table.sas",
+        "ddl/02_data_product_tables.sql"
+      ],
+      "context": "04_sas_data_products.sas assembles the golden record CUSTOMER_MASTER_PROFILE with a 4-way data step MERGE (IN= outer-join semantics) over the three data products plus STG_CUSTOMER_360, and the pipeline relies on three shared macros for connectivity, logging and validation.",
+      "scope": [
+        "Reimplement the 4-way MERGE as PySpark outer joins over CUSTOMER_SEGMENTS, TRANSACTION_ANALYTICS, CUSTOMER_RISK_SCORES and STG_CUSTOMER_360, preserving IN= based default handling for missing members.",
+        "Port the default-value handling and the completeness reporting output.",
+        "Replace %connect_teradata with a Python Snowflake connection utility that pulls credentials from Azure Key Vault (per TICKET-02).",
+        "Replace %log_step with a Python logging utility writing to the shared run-log table.",
+        "Replace %validate_table with a Python validation utility supporting row-count, null-rate and threshold assertions that abort the run (the %ABORT CANCEL equivalent).",
+        "Package the utilities as a shared, unit-tested Python module used by all Synapse Spark jobs."
+      ],
+      "acceptance_criteria": [
+        "CUSTOMER_MASTER_PROFILE reconciles with the SAS golden record row for row, including customers missing from one or more upstream products.",
+        "Completeness reporting reproduces the SAS metrics.",
+        "The three macros are fully replaced by the shared Python module and no job references SAS macros.",
+        "Validation failures abort the run and are recorded in the run-log.",
+        "The shared module has unit tests running in CI."
+      ],
+      "jira_key": "MBA-2210"
+    },
+    {
+      "id": "TICKET-10",
+      "summary": "Orchestration migration from shell scripts to Azure Synapse Pipelines in COG-GTM/retail-banking-analytics-pipeline",
+      "issue_type": "Story",
+      "labels": [
+        "migration",
+        "azure-synapse",
+        "orchestration"
+      ],
+      "dependencies": [
+        "TICKET-01",
+        "TICKET-02",
+        "TICKET-03",
+        "TICKET-04",
+        "TICKET-05",
+        "TICKET-06",
+        "TICKET-07",
+        "TICKET-08",
+        "TICKET-09"
+      ],
+      "affected_files": [
+        "orchestration/run_full_pipeline.sh",
+        "bteq/run_bteq_pipeline.sh",
+        "sas/run_sas_pipeline.sh",
+        "config/pipeline_config.cfg"
+      ],
+      "context": "The pipeline is driven by bash orchestrators that source config/pipeline_config.cfg, run the BTEQ and SAS phases sequentially with fail-fast semantics, support --skip-bteq/--skip-sas/--dry-run, validate row counts after the run and emit logs and notifications.",
+      "scope": [
+        "Build an Azure Synapse Pipeline that replaces run_full_pipeline.sh, run_bteq_pipeline.sh and run_sas_pipeline.sh.",
+        "Preserve sequential, fail-fast execution ordering across the staging and analytics phases.",
+        "Reproduce the skip-phase behaviour (--skip-bteq / --skip-sas) as pipeline parameters with conditional activities.",
+        "Reproduce dry-run behaviour so a run can print the planned activities without touching data.",
+        "Reproduce post-run row-count validation of the staging tables and data products, failing the pipeline on breach.",
+        "Reproduce logging and failure notification, routing to the team's existing alert channel.",
+        "Move config/pipeline_config.cfg values (run date, LOOKBACK_MONTHS, RISK_SCORE_THRESHOLD, database references, log level) to pipeline parameters, with secrets in Azure Key Vault.",
+        "Publish the pipeline definition as code in the repo and wire deployment through CI."
+      ],
+      "acceptance_criteria": [
+        "A single Synapse Pipeline run reproduces the full end-to-end pipeline and lands all four data products.",
+        "A failure in any activity stops downstream activities and surfaces a notification.",
+        "Skip-phase and dry-run parameters behave equivalently to the shell flags.",
+        "Post-run row-count validation fails the pipeline when thresholds are breached.",
+        "No configuration value or secret is hardcoded: all come from pipeline parameters or Key Vault.",
+        "The pipeline definition is version-controlled and deployable to DEV/UAT/PROD without manual edits."
+      ],
+      "jira_key": "MBA-2211"
+    }
+  ],
+  "jira_site": "https://cog-gtm.atlassian.net",
+  "jira_project_key": "MBA"
+}
