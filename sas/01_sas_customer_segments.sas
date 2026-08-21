@@ -233,7 +233,7 @@ quit;
 /* Truncate-and-load pattern */
 proc sql;
     connect to teradata (server="&TD_SERVER." user="&TD_USERNAME."
-                         password="{SAS004}XXXXXXXXXXXXXXXXXXXXXXXX" logmech=LDAP);
+                         password="&TD_PASSWORD." logmech=&TD_LOGMECH.);
 
     execute (DELETE FROM DATA_PRODUCTS_DB.CUSTOMER_SEGMENTS) by teradata;
     disconnect from teradata;

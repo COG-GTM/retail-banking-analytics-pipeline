@@ -209,7 +209,7 @@ quit;
 
 proc sql;
     connect to teradata (server="&TD_SERVER." user="&TD_USERNAME."
-                         password="{SAS004}XXXXXXXXXXXXXXXXXXXXXXXX" logmech=LDAP);
+                         password="&TD_PASSWORD." logmech=&TD_LOGMECH.);
     execute (DELETE FROM DATA_PRODUCTS_DB.CUSTOMER_MASTER_PROFILE) by teradata;
     disconnect from teradata;
 quit;
@@ -227,7 +227,7 @@ run;
 /* ========================================================================= */
 proc sql;
     connect to teradata (server="&TD_SERVER." user="&TD_USERNAME."
-                         password="{SAS004}XXXXXXXXXXXXXXXXXXXXXXXX" logmech=LDAP);
+                         password="&TD_PASSWORD." logmech=&TD_LOGMECH.);
     execute (COLLECT STATISTICS COLUMN (CUSTOMER_ID) ON DATA_PRODUCTS_DB.CUSTOMER_MASTER_PROFILE) by teradata;
     execute (COLLECT STATISTICS COLUMN (SEGMENT_NAME) ON DATA_PRODUCTS_DB.CUSTOMER_SEGMENTS)      by teradata;
     execute (COLLECT STATISTICS COLUMN (RISK_TIER)    ON DATA_PRODUCTS_DB.CUSTOMER_RISK_SCORES)   by teradata;

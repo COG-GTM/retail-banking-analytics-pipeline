@@ -14,6 +14,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/../config/pipeline_config.cfg"
 
+# Teradata credentials come from Azure Key Vault at runtime (MBA-2203)
+load_teradata_credentials
+
 mkdir -p "${LOG_DIR}/bteq"
 
 # ---------------------------------------------------------------------------

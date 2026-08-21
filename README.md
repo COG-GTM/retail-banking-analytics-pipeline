@@ -131,10 +131,30 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 ./orchestration/run_full_pipeline.sh --dry-run
 ```
 
+## Snowflake Environment (Modernization)
+
+The target Snowflake environment - warehouses, functional roles, the
+least-privilege grant matrix and the key-pair service principals - is
+provisioned by re-runnable scripts:
+
+```bash
+source config/snowflake_config.cfg
+./snowflake/admin/run_snowflake_admin.sh --env DEV
+```
+
+Credentials are never stored in this repository: they are resolved at runtime
+from Azure Key Vault (`scripts/keyvault.sh`,
+`snowflake/connection/snowflake_credentials.py`, and the Synapse linked services
+in `synapse/linked_services/`). `./scripts/scan_for_credentials.sh` fails the
+build if a credential literal is committed. See
+[docs/modernization/snowflake_security.md](docs/modernization/snowflake_security.md)
+for the grant matrix and the credential rotation runbook.
+
 ## Prerequisites
 
-- **Teradata**: BTEQ client (TTU 17.x+), service account with SELECT on source DBs
-  and ALL on staging/data product DBs
+- **Teradata** (legacy, parallel-run only): BTEQ client (TTU 17.x+), service
+  account with SELECT on source DBs and ALL on staging/data product DBs;
+  credentials supplied from Azure Key Vault via `load_teradata_credentials`
 - **SAS**: SAS 9.4 M7+ with Base SAS, SAS/STAT, SAS/ACCESS Interface to Teradata
 - **Shell**: bash 4+, `envsubst` (from gettext)
 
