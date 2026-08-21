@@ -1,0 +1,36 @@
+name: 'retail_banking_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'retail_banking_analytics'
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+analysis-paths: ["analyses"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+vars:
+  # Lookback windows previously hard-coded in the BTEQ scripts
+  balance_lookback_months: 3
+  payment_lookback_months: 24
+  fee_lookback_months: 12
+  merchant_lookback_months: 6
+
+models:
+  retail_banking_analytics:
+    +materialized: table
+    staging:
+      # Replaces ETL_STAGING_DB, previously populated by the BTEQ scripts
+      +schema: "{{ env_var('SF_SCHEMA_STAGING', 'ETL_STAGING') }}"
+      +tags: ['staging']
+    intermediate:
+      +materialized: ephemeral
+      +schema: "{{ env_var('SF_SCHEMA_STAGING', 'ETL_STAGING') }}"
+      +tags: ['intermediate']

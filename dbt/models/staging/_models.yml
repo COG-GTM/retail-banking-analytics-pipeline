@@ -1,0 +1,132 @@
+version: 2
+
+models:
+  - name: stg_risk_factors
+    description: >
+      Risk feature vector per customer, consumed by the risk scoring model.
+      Snowflake/dbt port of bteq/03_stg_risk_factors.bteq. One row per customer
+      with CUSTOMER_STATUS in ('A','I'), including customers with no
+      transactions in any of the lookback windows (features default to 0).
+    columns:
+      - name: customer_id
+        description: Grain of the model; one row per eligible customer.
+        tests:
+          - unique
+          - not_null
+      - name: account_overdraft_cnt
+        description: Posted transactions in the last 12 months that left a negative running balance.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: nsf_fee_total
+        description: Sum of NSF fee amounts in the last 12 months.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: large_withdrawal_cnt
+        description: Count of single debits of $5,000 or more in the last 12 months.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: large_withdrawal_amt
+        description: Total amount of the large debits above.
+        tests:
+          - not_null
+      - name: avg_daily_balance_30d
+        description: Average end-of-day balance over the last 30 days (0 when no activity).
+        tests:
+          - not_null
+      - name: avg_daily_balance_90d
+        description: Average end-of-day balance over the last 90 days (0 when no activity).
+        tests:
+          - not_null
+      - name: balance_volatility
+        description: Population standard deviation (STDDEV_POP) of end-of-day balances over 3 months.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: credit_util_ratio
+        description: Credit balance over credit limit across open CREDIT accounts; 0 when no limit.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: payment_ontime_pct
+        description: Percentage of on-time payments on CREDIT/LOAN accounts; 100 when no payments.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+              inclusive: true
+      - name: payment_late_cnt
+        description: Count of late payments in the last 24 months.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: months_since_last_late
+        description: Months since the most recent late payment; 999 when never late.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 999
+              inclusive: true
+      - name: external_credit_score
+        description: Most recent bureau score for the customer; 0 when no bureau record.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 900
+              inclusive: true
+      - name: debit_velocity_7d
+        description: Sum of debit amounts in the last 7 days.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: debit_velocity_30d
+        description: Sum of debit amounts in the last 30 days.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: new_merchant_cnt_30d
+        description: Distinct merchants used in the last 30 days never seen on the account before.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: international_txn_cnt
+        description: Transactions on the INTL channel in the last 6 months.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: high_risk_merchant_cnt
+        description: Transactions with high-risk merchant categories in the last 6 months.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: load_ts
+        description: Load timestamp (TIMESTAMP_NTZ), replaces Teradata CURRENT_TIMESTAMP(6).
+        tests:
+          - not_null

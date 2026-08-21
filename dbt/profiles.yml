@@ -1,0 +1,28 @@
+# =============================================================================
+# profiles.yml TEMPLATE - Retail Banking Analytics (dbt-snowflake)
+# =============================================================================
+# Provisional: TICKET-02 (Snowflake environment, role and secret management)
+# owns the final connection/secret contract. This template only reads the
+# environment variables that ticket is expected to provide, so nothing secret
+# is stored in the repository.
+#
+# Run with:  dbt run --profiles-dir dbt --select stg_risk_factors
+# =============================================================================
+
+retail_banking_analytics:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SF_ACCOUNT') }}"
+      user: "{{ env_var('SF_USER') }}"
+      password: "{{ env_var('SF_PASSWORD', '') }}"
+      authenticator: "{{ env_var('SF_AUTHENTICATOR', 'snowflake') }}"
+      role: "{{ env_var('SF_ROLE', 'ETL_ENGINEER') }}"
+      warehouse: "{{ env_var('SF_WAREHOUSE', 'ETL_WH') }}"
+      database: "{{ env_var('SF_DATABASE_ANALYTICS', 'RETAIL_BANKING_DEV') }}"
+      schema: "{{ env_var('SF_SCHEMA_STAGING', 'ETL_STAGING') }}"
+      threads: "{{ env_var('DBT_THREADS', '4') | int }}"
+      client_session_keep_alive: false
+      retry_on_database_errors: true
+      connect_retries: 2

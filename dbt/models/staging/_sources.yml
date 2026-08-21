@@ -1,0 +1,29 @@
+version: 2
+
+# =============================================================================
+# Snowflake source definitions
+# =============================================================================
+# Assumption (TICKET-01 not yet merged): the Teradata databases are migrated to
+# schemas inside a single environment-suffixed Snowflake database:
+#     CORE_BANKING_DB   -> <SF_DATABASE_ANALYTICS>.CORE_BANKING
+#     TXN_PROCESSING_DB -> <SF_DATABASE_ANALYTICS>.TXN_PROCESSING
+#     ETL_STAGING_DB    -> <SF_DATABASE_ANALYTICS>.ETL_STAGING
+# Only the tables consumed by TICKET-05 are declared here; sibling tickets add
+# the remainder of the source surface.
+# =============================================================================
+
+sources:
+  - name: core_banking
+    database: "{{ env_var('SF_DATABASE_ANALYTICS', 'RETAIL_BANKING_DEV') }}"
+    schema: "{{ env_var('SF_SCHEMA_CORE_BANKING', 'CORE_BANKING') }}"
+    tables:
+      - name: customers
+      - name: accounts
+      - name: customer_bureau_scores
+
+  - name: txn_processing
+    database: "{{ env_var('SF_DATABASE_ANALYTICS', 'RETAIL_BANKING_DEV') }}"
+    schema: "{{ env_var('SF_SCHEMA_TXN_PROCESSING', 'TXN_PROCESSING') }}"
+    tables:
+      - name: transactions
+      - name: transaction_types
