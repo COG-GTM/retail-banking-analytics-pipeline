@@ -5,6 +5,9 @@
 /* Source:      CORE_BANKING_DB.CUSTOMERS, ACCOUNTS, ADDRESSES                   */
 /* Target:      ETL_STAGING_DB.STG_CUSTOMER_360                                  */
 /* Schedule:    Daily, 02:00 AM ET                                               */
+/* MIGRATION:   MBA-2204 / TICKET-03 - ported to Snowflake as the dbt model      */
+/*              dbt/models/staging/stg_customer_360.sql. This BTEQ script is      */
+/*              retained for reference/parallel-run until cutover.                */
 /* ============================================================================= */
 
 .SET ERRORLEVEL 3807 SEVERITY 0;   /* Suppress "table does not exist" on DROP   */

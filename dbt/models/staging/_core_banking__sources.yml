@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: core_banking
+    description: >
+      Snowflake landing of the operational core banking tables (migrated from
+      Teradata CORE_BANKING_DB by TICKET-01). Database/schema are overridable
+      via the source_core_banking_database / source_core_banking_schema vars so
+      this model can point at DEV/UAT/PROD without edits.
+    database: "{{ var('source_core_banking_database', 'CORE_BANKING_DB') }}"
+    schema: "{{ var('source_core_banking_schema', 'PUBLIC') }}"
+    tables:
+      - name: CUSTOMERS
+      - name: ACCOUNTS
+      - name: ADDRESSES

@@ -1,0 +1,54 @@
+version: 2
+
+models:
+  - name: stg_customer_360
+    description: >
+      Denormalized customer-360 staging table (Snowflake port of
+      bteq/01_stg_customer_360.bteq). One row per non-closed customer with
+      primary address, account portfolio metrics and credit utilization.
+    columns:
+      - name: CUSTOMER_ID
+        description: Core banking customer identifier.
+        tests:
+          - unique
+          - not_null
+      - name: CUSTOMER_STATUS
+        description: A=Active, I=Inactive (closed customers are excluded).
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['A', 'I']
+      - name: AGE
+        description: Age in years derived from DATE_OF_BIRTH.
+      - name: TENURE_MONTHS
+        description: Months between CUSTOMER_SINCE and the run date.
+      - name: HAS_CHECKING
+        description: 'Y when the customer holds at least one CHECKING account.'
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Y', 'N']
+      - name: HAS_SAVINGS
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Y', 'N']
+      - name: HAS_CREDIT
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Y', 'N']
+      - name: HAS_LOAN
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Y', 'N']
+      - name: CREDIT_UTILIZATION_PCT
+        description: Credit balance / credit limit * 100; 0.00 when no credit limit.
+        tests:
+          - not_null
+      - name: LOAD_TS
+        description: Run timestamp of the dbt model.
+        tests:
+          - not_null
