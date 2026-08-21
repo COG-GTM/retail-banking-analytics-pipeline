@@ -1,0 +1,31 @@
+{
+  "environment": "DEV",
+  "workspace": {
+    "name": "syn-retail-banking-dev",
+    "resourceGroup": "rg-retail-banking-dev",
+    "sparkPool": "sparkpooldev01"
+  },
+  "pipelineParameters": {
+    "environment": "DEV",
+    "runDate": "",
+    "dryRun": false,
+    "skipStaging": false,
+    "skipAnalytics": false,
+    "lookbackMonths": 12,
+    "riskScoreThreshold": 700,
+    "logLevel": "DEBUG",
+    "snowflakeAccountIdentifier": "bankdemo-dev",
+    "snowflakeUser": "SVC_SYNAPSE_ETL",
+    "snowflakeRole": "TRANSFORMER_DEV",
+    "snowflakeWarehouse": "WH_ELT_DEV",
+    "snowflakeDatabaseCore": "CORE_BANKING_DEV",
+    "snowflakeDatabaseTxn": "TXN_PROCESSING_DEV",
+    "snowflakeDatabaseStaging": "ETL_STAGING_DEV",
+    "snowflakeDatabaseProducts": "DATA_PRODUCTS_DEV",
+    "keyVaultName": "kv-retail-banking-dev",
+    "snowflakePrivateKeySecretName": "snowflake-synapse-private-key",
+    "alertWebhookSecretName": "retail-banking-alert-webhook",
+    "minRowsStaging": 1,
+    "minRowsProducts": 1
+  }
+}

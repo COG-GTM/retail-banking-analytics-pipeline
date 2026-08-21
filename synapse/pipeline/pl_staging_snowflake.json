@@ -1,0 +1,139 @@
+{
+  "name": "pl_staging_snowflake",
+  "properties": {
+    "description": "Phase 1 - builds the Snowflake staging models that replace bteq/01_stg_customer_360.bteq, 02_stg_txn_summary.bteq and 03_stg_risk_factors.bteq (TICKET-03..05). Steps run strictly in order and stop on the first failure.",
+    "folder": {
+      "name": "retail-banking-analytics"
+    },
+    "annotations": ["retail-banking-analytics", "migration", "MBA-2211"],
+    "parameters": {
+      "environment": { "type": "String" },
+      "runId": { "type": "String" },
+      "lookbackMonths": { "type": "Int", "defaultValue": 12 },
+      "logLevel": { "type": "String", "defaultValue": "INFO" },
+      "snowflakeDatabaseCore": { "type": "String" },
+      "snowflakeDatabaseTxn": { "type": "String" },
+      "snowflakeDatabaseStaging": { "type": "String" },
+      "snowflakeWarehouse": { "type": "String" },
+      "snowflakeRole": { "type": "String" },
+      "keyVaultName": { "type": "String" }
+    },
+    "activities": [
+      {
+        "name": "StgCustomer360",
+        "type": "SynapseNotebook",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 60,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "notebook": {
+            "referenceName": "nb_run_dbt",
+            "type": "NotebookReference"
+          },
+          "sparkPool": {
+            "referenceName": "sparkpool01",
+            "type": "BigDataPoolReference"
+          },
+          "parameters": {
+            "dbt_select": { "value": "stg_customer_360", "type": "string" },
+            "dbt_target": { "value": { "value": "@toLower(pipeline().parameters.environment)", "type": "Expression" }, "type": "string" },
+            "run_id": { "value": { "value": "@pipeline().parameters.runId", "type": "Expression" }, "type": "string" },
+            "lookback_months": { "value": { "value": "@pipeline().parameters.lookbackMonths", "type": "Expression" }, "type": "int" },
+            "log_level": { "value": { "value": "@pipeline().parameters.logLevel", "type": "Expression" }, "type": "string" },
+            "database_core": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseCore", "type": "Expression" }, "type": "string" },
+            "database_txn": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseTxn", "type": "Expression" }, "type": "string" },
+            "database_staging": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseStaging", "type": "Expression" }, "type": "string" },
+            "warehouse": { "value": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" }, "type": "string" },
+            "role": { "value": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" }, "type": "string" },
+            "key_vault_name": { "value": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" }, "type": "string" }
+          }
+        }
+      },
+      {
+        "name": "StgTxnSummary",
+        "type": "SynapseNotebook",
+        "dependsOn": [
+          {
+            "activity": "StgCustomer360",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 60,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "notebook": {
+            "referenceName": "nb_run_dbt",
+            "type": "NotebookReference"
+          },
+          "sparkPool": {
+            "referenceName": "sparkpool01",
+            "type": "BigDataPoolReference"
+          },
+          "parameters": {
+            "dbt_select": { "value": "stg_txn_summary", "type": "string" },
+            "dbt_target": { "value": { "value": "@toLower(pipeline().parameters.environment)", "type": "Expression" }, "type": "string" },
+            "run_id": { "value": { "value": "@pipeline().parameters.runId", "type": "Expression" }, "type": "string" },
+            "lookback_months": { "value": { "value": "@pipeline().parameters.lookbackMonths", "type": "Expression" }, "type": "int" },
+            "log_level": { "value": { "value": "@pipeline().parameters.logLevel", "type": "Expression" }, "type": "string" },
+            "database_core": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseCore", "type": "Expression" }, "type": "string" },
+            "database_txn": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseTxn", "type": "Expression" }, "type": "string" },
+            "database_staging": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseStaging", "type": "Expression" }, "type": "string" },
+            "warehouse": { "value": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" }, "type": "string" },
+            "role": { "value": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" }, "type": "string" },
+            "key_vault_name": { "value": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" }, "type": "string" }
+          }
+        }
+      },
+      {
+        "name": "StgRiskFactors",
+        "type": "SynapseNotebook",
+        "dependsOn": [
+          {
+            "activity": "StgTxnSummary",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 60,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "notebook": {
+            "referenceName": "nb_run_dbt",
+            "type": "NotebookReference"
+          },
+          "sparkPool": {
+            "referenceName": "sparkpool01",
+            "type": "BigDataPoolReference"
+          },
+          "parameters": {
+            "dbt_select": { "value": "stg_risk_factors", "type": "string" },
+            "dbt_target": { "value": { "value": "@toLower(pipeline().parameters.environment)", "type": "Expression" }, "type": "string" },
+            "run_id": { "value": { "value": "@pipeline().parameters.runId", "type": "Expression" }, "type": "string" },
+            "lookback_months": { "value": { "value": "@pipeline().parameters.lookbackMonths", "type": "Expression" }, "type": "int" },
+            "log_level": { "value": { "value": "@pipeline().parameters.logLevel", "type": "Expression" }, "type": "string" },
+            "database_core": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseCore", "type": "Expression" }, "type": "string" },
+            "database_txn": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseTxn", "type": "Expression" }, "type": "string" },
+            "database_staging": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseStaging", "type": "Expression" }, "type": "string" },
+            "warehouse": { "value": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" }, "type": "string" },
+            "role": { "value": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" }, "type": "string" },
+            "key_vault_name": { "value": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" }, "type": "string" }
+          }
+        }
+      }
+    ]
+  }
+}

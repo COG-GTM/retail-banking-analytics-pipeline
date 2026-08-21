@@ -131,6 +131,20 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 ./orchestration/run_full_pipeline.sh --dry-run
 ```
 
+### Azure Synapse orchestration (migrated)
+
+The Snowflake/Synapse estate is orchestrated by the pipeline definitions in
+[`synapse/`](synapse/README.md) instead of the shell scripts above. Skip-phase
+and dry-run flags become pipeline parameters (`skipStaging`, `skipAnalytics`,
+`dryRun`), configuration moves to `synapse/config/<env>.parameters.json` and
+secrets to Azure Key Vault. See
+[`docs/modernization/orchestration_synapse_migration.md`](docs/modernization/orchestration_synapse_migration.md).
+
+```bash
+python scripts/validate_synapse_artifacts.py
+python scripts/deploy_synapse.py --environment dev --dry-run
+```
+
 ## Prerequisites
 
 - **Teradata**: BTEQ client (TTU 17.x+), service account with SELECT on source DBs

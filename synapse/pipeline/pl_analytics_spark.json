@@ -1,0 +1,169 @@
+{
+  "name": "pl_analytics_spark",
+  "properties": {
+    "description": "Phase 2 - Synapse Spark notebooks replacing sas/run_sas_pipeline.sh and the four SAS programs (TICKET-06..09). Steps run strictly in order and stop on the first failure.",
+    "folder": {
+      "name": "retail-banking-analytics"
+    },
+    "annotations": ["retail-banking-analytics", "migration", "MBA-2211"],
+    "parameters": {
+      "environment": { "type": "String" },
+      "runId": { "type": "String" },
+      "riskScoreThreshold": { "type": "Int", "defaultValue": 700 },
+      "lookbackMonths": { "type": "Int", "defaultValue": 12 },
+      "logLevel": { "type": "String", "defaultValue": "INFO" },
+      "snowflakeDatabaseStaging": { "type": "String" },
+      "snowflakeDatabaseProducts": { "type": "String" },
+      "snowflakeWarehouse": { "type": "String" },
+      "snowflakeRole": { "type": "String" },
+      "keyVaultName": { "type": "String" }
+    },
+    "activities": [
+      {
+        "name": "CustomerSegments",
+        "type": "SynapseNotebook",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.03:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 60,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "notebook": {
+            "referenceName": "nb_customer_segments",
+            "type": "NotebookReference"
+          },
+          "sparkPool": {
+            "referenceName": "sparkpool01",
+            "type": "BigDataPoolReference"
+          },
+          "parameters": {
+            "run_id": { "value": { "value": "@pipeline().parameters.runId", "type": "Expression" }, "type": "string" },
+            "environment": { "value": { "value": "@pipeline().parameters.environment", "type": "Expression" }, "type": "string" },
+            "log_level": { "value": { "value": "@pipeline().parameters.logLevel", "type": "Expression" }, "type": "string" },
+            "database_staging": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseStaging", "type": "Expression" }, "type": "string" },
+            "database_products": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseProducts", "type": "Expression" }, "type": "string" },
+            "warehouse": { "value": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" }, "type": "string" },
+            "role": { "value": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" }, "type": "string" },
+            "key_vault_name": { "value": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" }, "type": "string" }
+          }
+        }
+      },
+      {
+        "name": "TxnAnalytics",
+        "type": "SynapseNotebook",
+        "dependsOn": [
+          {
+            "activity": "CustomerSegments",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "policy": {
+          "timeout": "0.03:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 60,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "notebook": {
+            "referenceName": "nb_txn_analytics",
+            "type": "NotebookReference"
+          },
+          "sparkPool": {
+            "referenceName": "sparkpool01",
+            "type": "BigDataPoolReference"
+          },
+          "parameters": {
+            "run_id": { "value": { "value": "@pipeline().parameters.runId", "type": "Expression" }, "type": "string" },
+            "environment": { "value": { "value": "@pipeline().parameters.environment", "type": "Expression" }, "type": "string" },
+            "log_level": { "value": { "value": "@pipeline().parameters.logLevel", "type": "Expression" }, "type": "string" },
+            "lookback_months": { "value": { "value": "@pipeline().parameters.lookbackMonths", "type": "Expression" }, "type": "int" },
+            "database_staging": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseStaging", "type": "Expression" }, "type": "string" },
+            "database_products": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseProducts", "type": "Expression" }, "type": "string" },
+            "warehouse": { "value": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" }, "type": "string" },
+            "role": { "value": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" }, "type": "string" },
+            "key_vault_name": { "value": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" }, "type": "string" }
+          }
+        }
+      },
+      {
+        "name": "RiskScoring",
+        "type": "SynapseNotebook",
+        "dependsOn": [
+          {
+            "activity": "TxnAnalytics",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "policy": {
+          "timeout": "0.03:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 60,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "notebook": {
+            "referenceName": "nb_risk_scoring",
+            "type": "NotebookReference"
+          },
+          "sparkPool": {
+            "referenceName": "sparkpool01",
+            "type": "BigDataPoolReference"
+          },
+          "parameters": {
+            "run_id": { "value": { "value": "@pipeline().parameters.runId", "type": "Expression" }, "type": "string" },
+            "environment": { "value": { "value": "@pipeline().parameters.environment", "type": "Expression" }, "type": "string" },
+            "log_level": { "value": { "value": "@pipeline().parameters.logLevel", "type": "Expression" }, "type": "string" },
+            "risk_score_threshold": { "value": { "value": "@pipeline().parameters.riskScoreThreshold", "type": "Expression" }, "type": "int" },
+            "database_staging": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseStaging", "type": "Expression" }, "type": "string" },
+            "database_products": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseProducts", "type": "Expression" }, "type": "string" },
+            "warehouse": { "value": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" }, "type": "string" },
+            "role": { "value": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" }, "type": "string" },
+            "key_vault_name": { "value": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" }, "type": "string" }
+          }
+        }
+      },
+      {
+        "name": "DataProducts",
+        "type": "SynapseNotebook",
+        "dependsOn": [
+          {
+            "activity": "RiskScoring",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "policy": {
+          "timeout": "0.03:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 60,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "notebook": {
+            "referenceName": "nb_data_products",
+            "type": "NotebookReference"
+          },
+          "sparkPool": {
+            "referenceName": "sparkpool01",
+            "type": "BigDataPoolReference"
+          },
+          "parameters": {
+            "run_id": { "value": { "value": "@pipeline().parameters.runId", "type": "Expression" }, "type": "string" },
+            "environment": { "value": { "value": "@pipeline().parameters.environment", "type": "Expression" }, "type": "string" },
+            "log_level": { "value": { "value": "@pipeline().parameters.logLevel", "type": "Expression" }, "type": "string" },
+            "database_staging": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseStaging", "type": "Expression" }, "type": "string" },
+            "database_products": { "value": { "value": "@pipeline().parameters.snowflakeDatabaseProducts", "type": "Expression" }, "type": "string" },
+            "warehouse": { "value": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" }, "type": "string" },
+            "role": { "value": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" }, "type": "string" },
+            "key_vault_name": { "value": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" }, "type": "string" }
+          }
+        }
+      }
+    ]
+  }
+}

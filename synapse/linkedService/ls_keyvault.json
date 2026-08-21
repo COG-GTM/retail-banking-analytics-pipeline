@@ -1,0 +1,19 @@
+{
+  "name": "ls_keyvault",
+  "properties": {
+    "type": "AzureKeyVault",
+    "description": "Key Vault holding Snowflake key-pair credentials and the alert webhook URL. Vault name is supplied per environment.",
+    "annotations": ["retail-banking-analytics"],
+    "parameters": {
+      "keyVaultName": {
+        "type": "String"
+      }
+    },
+    "typeProperties": {
+      "baseUrl": {
+        "value": "@concat('https://', linkedService().keyVaultName, '.vault.azure.net/')",
+        "type": "Expression"
+      }
+    }
+  }
+}
