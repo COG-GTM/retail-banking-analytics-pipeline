@@ -1,0 +1,38 @@
+name: Synapse Spark unit tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'synapse/**'
+      - '.github/workflows/synapse-python-ci.yml'
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: synapse
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: synapse/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Compile PySpark sources
+        run: python -m compileall -q jobs pipeline_utils
+
+      - name: Run unit tests
+        run: pytest -q
