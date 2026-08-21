@@ -1,0 +1,5 @@
+# Local/CI development dependencies for the Synapse Spark jobs.
+# Synapse Spark pools provide pyspark at runtime; it is pinned here so unit
+# tests run the same way locally and in CI.
+pyspark==3.5.1
+pytest==8.2.2

@@ -1,0 +1,5 @@
+# Runtime dependencies installed on the Synapse Spark pool.
+# pyspark and the Snowflake Spark connector jars are provided by the pool.
+azure-identity>=1.16.0
+azure-keyvault-secrets>=4.8.0
+snowflake-connector-python>=3.10.0
