@@ -1,0 +1,42 @@
+{
+  "name": "01_customer_segments",
+  "properties": {
+    "description": "Customer segmentation (migrated from sas/01_sas_customer_segments.sas). Reads ETL_STAGING.STG_CUSTOMER_360 from Snowflake, fits k-means (k=5) and publishes DATA_PRODUCTS.CUSTOMER_SEGMENTS.",
+    "targetBigDataPool": {
+      "referenceName": "sparkpool01",
+      "type": "BigDataPoolReference"
+    },
+    "targetSparkConfiguration": {
+      "referenceName": "snowflake-connector",
+      "type": "SparkConfigurationReference"
+    },
+    "requiredSparkVersion": "3.4",
+    "language": "python",
+    "jobProperties": {
+      "name": "01_customer_segments",
+      "file": "abfss://artifacts@{storageaccount}.dfs.core.windows.net/spark/jobs/01_customer_segments.py",
+      "args": ["--min-rows", "1000", "--seed", "42", "--n-init", "20"],
+      "jars": [
+        "abfss://artifacts@{storageaccount}.dfs.core.windows.net/spark/libs/spark-snowflake_2.12.jar",
+        "abfss://artifacts@{storageaccount}.dfs.core.windows.net/spark/libs/snowflake-jdbc.jar"
+      ],
+      "driverMemory": "28g",
+      "driverCores": 4,
+      "executorMemory": "28g",
+      "executorCores": 4,
+      "numExecutors": 3,
+      "conf": {
+        "spark.sql.session.timeZone": "UTC",
+        "spark.yarn.appMasterEnv.SNOWFLAKE_URL": "@pipeline().parameters.snowflakeUrl",
+        "spark.yarn.appMasterEnv.SNOWFLAKE_USER": "@pipeline().parameters.snowflakeUser",
+        "spark.yarn.appMasterEnv.SNOWFLAKE_ROLE": "@pipeline().parameters.snowflakeRole",
+        "spark.yarn.appMasterEnv.SNOWFLAKE_WAREHOUSE": "@pipeline().parameters.snowflakeWarehouse",
+        "spark.yarn.appMasterEnv.SNOWFLAKE_DATABASE": "@pipeline().parameters.snowflakeDatabase",
+        "spark.yarn.appMasterEnv.SNOWFLAKE_STAGING_SCHEMA": "ETL_STAGING",
+        "spark.yarn.appMasterEnv.SNOWFLAKE_DP_SCHEMA": "DATA_PRODUCTS",
+        "spark.yarn.appMasterEnv.AZURE_KEY_VAULT_NAME": "@pipeline().parameters.keyVaultName",
+        "spark.yarn.appMasterEnv.SNOWFLAKE_PRIVATE_KEY_SECRET": "snowflake-spark-private-key"
+      }
+    }
+  }
+}
