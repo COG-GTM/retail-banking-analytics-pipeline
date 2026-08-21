@@ -1,0 +1,31 @@
+name: retail_banking_analytics
+version: 1.0.0
+config-version: 2
+
+profile: retail_banking_analytics
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+target-path: target
+clean-targets:
+  - target
+  - dbt_packages
+
+vars:
+  # Lookback window for transaction aggregation (was LOOKBACK_MONTHS in
+  # config/pipeline_config.cfg, injected into the BTEQ script by the shell).
+  # Override per run: dbt run --vars '{lookback_months: 24}'
+  lookback_months: 12
+  # Schema holding the ETL_RUN_LOG audit table (was ETL_STAGING_DB in Teradata).
+  etl_staging_schema: ETL_STAGING
+  # Posted-transaction status code filter.
+  txn_posted_status_code: P
+
+models:
+  retail_banking_analytics:
+    staging:
+      +materialized: table
+      +schema: staging

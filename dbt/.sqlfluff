@@ -1,0 +1,16 @@
+# Offline syntax validation for the Snowflake models (no warehouse required):
+#   sqlfluff parse models/staging/stg_txn_summary.sql
+[sqlfluff]
+dialect = snowflake
+templater = jinja
+# Parse-only: style rules are not enforced in this repo.
+exclude_rules = all
+
+[sqlfluff:templater:jinja]
+apply_dbt_builtins = True
+
+[sqlfluff:templater:jinja:context]
+target = {"database": "RETAIL_BANKING"}
+
+[sqlfluff:templater:jinja:macros]
+log_etl_run = {% macro log_etl_run(job_name, step_name='FULL_LOAD') %}select 1{% endmacro %}

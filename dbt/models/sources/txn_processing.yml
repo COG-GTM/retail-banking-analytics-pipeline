@@ -1,0 +1,32 @@
+version: 2
+
+sources:
+  - name: txn_processing
+    description: Transaction processing tables migrated from Teradata TXN_PROCESSING_DB.
+    database: "{{ env_var('SNOWFLAKE_DATABASE', 'RETAIL_BANKING') }}"
+    schema: TXN_PROCESSING
+    tables:
+      - name: transactions
+        identifier: TRANSACTIONS
+        description: Individual financial transactions across all account types.
+        columns:
+          - name: TRANSACTION_ID
+          - name: ACCOUNT_ID
+          - name: TRANSACTION_TYPE_CD
+          - name: TRANSACTION_DATE
+          - name: AMOUNT
+          - name: MERCHANT_NAME
+          - name: MERCHANT_CATEGORY
+          - name: CHANNEL_CODE
+            description: ATM, POS, WEB, MOB, ACH, WIRE
+          - name: STATUS_CODE
+            description: P=Posted, R=Reversed, H=Hold
+      - name: transaction_types
+        identifier: TRANSACTION_TYPES
+        description: Reference/lookup table for transaction type codes.
+        columns:
+          - name: TRANSACTION_TYPE_CD
+          - name: CATEGORY
+            description: DEBIT, CREDIT, FEE, INTEREST
+          - name: IS_REVENUE
+            description: Y/N flag marking revenue-generating transaction types.

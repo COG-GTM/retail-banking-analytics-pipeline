@@ -45,6 +45,12 @@ PRIMARY INDEX (CUSTOMER_ID);
 -- Aggregated transaction metrics per customer over configurable lookback.
 -- Populated by: bteq/02_stg_txn_summary.bteq
 -- Consumed by:  sas/02_sas_txn_analytics.sas
+--
+-- MIGRATION (MBA-2205 / TICKET-04): on Snowflake this table is no longer
+-- DROP/CREATE'd by BTEQ. It is materialized by the dbt model
+-- dbt/models/staging/stg_txn_summary.sql, which also adds TXN_COUNT_REVENUE,
+-- AMT_TOTAL_REVENUE and PCT_OTHER_CHANNEL. The Teradata DDL below remains for
+-- the legacy pipeline.
 -- -----------------------------------------------------------------------------
 CREATE MULTISET TABLE ETL_STAGING_DB.STG_TXN_SUMMARY, NO FALLBACK
 (

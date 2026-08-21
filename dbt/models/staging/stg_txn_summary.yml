@@ -1,0 +1,60 @@
+version: 2
+
+models:
+  - name: stg_txn_summary
+    description: >
+      Per-customer/account transaction summary over a configurable lookback
+      window (var `lookback_months`). Snowflake replacement for
+      bteq/02_stg_txn_summary.bteq; consumed by the transaction analytics
+      data product. Grain: one row per ACCOUNT_ID.
+    columns:
+      - name: CUSTOMER_ID
+        description: Owning customer of the account.
+        tests:
+          - not_null
+      - name: ACCOUNT_ID
+        description: Account the transactions belong to; model grain.
+        tests:
+          - not_null
+          - unique
+      - name: ACCOUNT_TYPE
+        description: SAVINGS, CHECKING, LOAN or CREDIT.
+      - name: SUMMARY_PERIOD_START
+        description: First day of the lookback window (CURRENT_DATE - lookback_months).
+        tests:
+          - not_null
+      - name: SUMMARY_PERIOD_END
+        description: Last day of the lookback window (CURRENT_DATE).
+        tests:
+          - not_null
+      - name: TXN_COUNT_TOTAL
+        description: Posted transactions in the window.
+        tests:
+          - not_null
+      - name: TXN_COUNT_DEBIT
+      - name: TXN_COUNT_CREDIT
+      - name: TXN_COUNT_FEE
+      - name: TXN_COUNT_REVENUE
+        description: Transactions whose type is flagged IS_REVENUE = 'Y'.
+      - name: AMT_TOTAL_DEBIT
+      - name: AMT_TOTAL_CREDIT
+      - name: AMT_TOTAL_FEES
+      - name: AMT_TOTAL_REVENUE
+        description: Absolute amount of revenue-flagged transactions.
+      - name: AMT_AVG_DEBIT
+      - name: AMT_AVG_CREDIT
+      - name: AMT_MAX_SINGLE_DEBIT
+      - name: AMT_MAX_SINGLE_CREDIT
+      - name: DISTINCT_MERCHANTS
+      - name: TOP_MERCHANT_CATEGORY
+        description: Merchant category with the highest absolute spend in the window.
+      - name: PCT_ATM
+      - name: PCT_POS
+      - name: PCT_WEB
+      - name: PCT_MOBILE
+      - name: PCT_OTHER_CHANNEL
+        description: >
+          Share of transactions on channels other than ATM/POS/WEB/MOB (ACH, WIRE).
+          Added so the channel mix sums to 100 for every account.
+      - name: DAYS_SINCE_LAST_TXN
+      - name: LOAD_TS
