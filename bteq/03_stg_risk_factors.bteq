@@ -7,6 +7,13 @@
 /*              TXN_PROCESSING_DB.TRANSACTIONS, TRANSACTION_TYPES               */
 /* Target:      ETL_STAGING_DB.STG_RISK_FACTORS                                  */
 /* Schedule:    Daily, 03:00 AM ET  (runs after 02_stg_txn_summary)              */
+/* ----------------------------------------------------------------------------- */
+/* MIGRATED (TICKET-05 / MBA-2206): superseded on Snowflake by the dbt models    */
+/*   dbt/models/staging/stg_risk_factors.sql                                     */
+/*   dbt/models/intermediate/int_daily_balance.sql                               */
+/*   dbt/models/intermediate/int_payment_history.sql                             */
+/* Retained for reference and reconciliation until the Teradata job is retired.  */
+/* See docs/modernization/ticket-05-stg-risk-factors.md.                         */
 /* ============================================================================= */
 
 .SET ERRORLEVEL 3807 SEVERITY 0;

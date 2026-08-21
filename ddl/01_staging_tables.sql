@@ -80,6 +80,9 @@ PRIMARY INDEX (CUSTOMER_ID, ACCOUNT_ID);
 -- Pre-computed risk indicator features per customer for scoring models.
 -- Populated by: bteq/03_stg_risk_factors.bteq
 -- Consumed by:  sas/03_sas_risk_scoring.sas
+-- MIGRATED (TICKET-05 / MBA-2206): the Snowflake equivalent lives in
+--   ddl/snowflake/01_stg_risk_factors.sql and is built by the dbt model
+--   dbt/models/staging/stg_risk_factors.sql.
 -- -----------------------------------------------------------------------------
 CREATE MULTISET TABLE ETL_STAGING_DB.STG_RISK_FACTORS, NO FALLBACK
 (

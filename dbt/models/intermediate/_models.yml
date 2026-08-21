@@ -1,0 +1,13 @@
+version: 2
+
+models:
+  - name: int_daily_balance
+    description: >
+      Ephemeral replacement for ETL_STAGING_DB.WRK_DAILY_BALANCE: last posted
+      running balance per account per day over the last 3 months. Materialized
+      as a CTE, so no work table is created and no cleanup DROP is needed.
+
+  - name: int_payment_history
+    description: >
+      Ephemeral replacement for ETL_STAGING_DB.WRK_PAYMENT_HISTORY: on-time and
+      late payment counts per CREDIT/LOAN account over the last 24 months.
