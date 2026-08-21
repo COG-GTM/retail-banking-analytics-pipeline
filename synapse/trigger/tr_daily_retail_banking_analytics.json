@@ -1,0 +1,30 @@
+{
+  "name": "tr_daily_retail_banking_analytics",
+  "properties": {
+    "description": "Daily 02:00 UTC schedule replacing the cron invocation of orchestration/run_full_pipeline.sh. Pipeline parameters are supplied by the environment parameter file at deploy time.",
+    "annotations": ["retail-banking-analytics", "migration", "MBA-2211"],
+    "runtimeState": "Stopped",
+    "pipelines": [
+      {
+        "pipelineReference": {
+          "referenceName": "pl_retail_banking_analytics",
+          "type": "PipelineReference"
+        },
+        "parameters": {}
+      }
+    ],
+    "type": "ScheduleTrigger",
+    "typeProperties": {
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "startTime": "2026-01-01T02:00:00Z",
+        "timeZone": "UTC",
+        "schedule": {
+          "hours": [2],
+          "minutes": [0]
+        }
+      }
+    }
+  }
+}

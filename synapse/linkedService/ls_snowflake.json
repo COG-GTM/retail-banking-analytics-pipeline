@@ -1,0 +1,71 @@
+{
+  "name": "ls_snowflake",
+  "properties": {
+    "type": "SnowflakeV2",
+    "description": "Snowflake connection used by Script activities. Key-pair authentication, private key resolved from Azure Key Vault at runtime (TICKET-02).",
+    "annotations": ["retail-banking-analytics"],
+    "parameters": {
+      "accountIdentifier": {
+        "type": "String"
+      },
+      "user": {
+        "type": "String"
+      },
+      "database": {
+        "type": "String"
+      },
+      "warehouse": {
+        "type": "String"
+      },
+      "role": {
+        "type": "String"
+      },
+      "keyVaultName": {
+        "type": "String"
+      },
+      "privateKeySecretName": {
+        "type": "String"
+      }
+    },
+    "typeProperties": {
+      "authenticationType": "KeyPair",
+      "accountIdentifier": {
+        "value": "@linkedService().accountIdentifier",
+        "type": "Expression"
+      },
+      "user": {
+        "value": "@linkedService().user",
+        "type": "Expression"
+      },
+      "database": {
+        "value": "@linkedService().database",
+        "type": "Expression"
+      },
+      "warehouse": {
+        "value": "@linkedService().warehouse",
+        "type": "Expression"
+      },
+      "role": {
+        "value": "@linkedService().role",
+        "type": "Expression"
+      },
+      "privateKey": {
+        "type": "AzureKeyVaultSecret",
+        "store": {
+          "referenceName": "ls_keyvault",
+          "type": "LinkedServiceReference",
+          "parameters": {
+            "keyVaultName": {
+              "value": "@linkedService().keyVaultName",
+              "type": "Expression"
+            }
+          }
+        },
+        "secretName": {
+          "value": "@linkedService().privateKeySecretName",
+          "type": "Expression"
+        }
+      }
+    }
+  }
+}

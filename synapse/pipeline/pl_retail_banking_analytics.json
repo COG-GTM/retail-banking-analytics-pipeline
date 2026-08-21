@@ -1,0 +1,209 @@
+{
+  "name": "pl_retail_banking_analytics",
+  "properties": {
+    "description": "Entry point replacing orchestration/run_full_pipeline.sh. Handles dry-run, delegates the real run to pl_retail_banking_analytics_run and raises a failure notification.",
+    "folder": {
+      "name": "retail-banking-analytics"
+    },
+    "annotations": ["retail-banking-analytics", "migration", "MBA-2211"],
+    "parameters": {
+      "environment": { "type": "String", "defaultValue": "DEV" },
+      "runDate": { "type": "String", "defaultValue": "" },
+      "dryRun": { "type": "Bool", "defaultValue": false },
+      "skipStaging": { "type": "Bool", "defaultValue": false },
+      "skipAnalytics": { "type": "Bool", "defaultValue": false },
+      "lookbackMonths": { "type": "Int", "defaultValue": 12 },
+      "riskScoreThreshold": { "type": "Int", "defaultValue": 700 },
+      "logLevel": { "type": "String", "defaultValue": "INFO" },
+      "snowflakeAccountIdentifier": { "type": "String" },
+      "snowflakeUser": { "type": "String" },
+      "snowflakeRole": { "type": "String" },
+      "snowflakeWarehouse": { "type": "String" },
+      "snowflakeDatabaseCore": { "type": "String" },
+      "snowflakeDatabaseTxn": { "type": "String" },
+      "snowflakeDatabaseStaging": { "type": "String" },
+      "snowflakeDatabaseProducts": { "type": "String" },
+      "keyVaultName": { "type": "String" },
+      "snowflakePrivateKeySecretName": { "type": "String", "defaultValue": "snowflake-synapse-private-key" },
+      "alertWebhookSecretName": { "type": "String", "defaultValue": "retail-banking-alert-webhook" },
+      "minRowsStaging": { "type": "Int", "defaultValue": 1 },
+      "minRowsProducts": { "type": "Int", "defaultValue": 1 }
+    },
+    "variables": {
+      "runId": { "type": "String" },
+      "plannedActivities": { "type": "String" },
+      "failureMessage": { "type": "String" }
+    },
+    "activities": [
+      {
+        "name": "SetRunId",
+        "type": "SetVariable",
+        "dependsOn": [],
+        "typeProperties": {
+          "variableName": "runId",
+          "value": {
+            "value": "@concat(pipeline().parameters.environment, '_', if(empty(pipeline().parameters.runDate), formatDateTime(utcnow(), 'yyyyMMdd'), pipeline().parameters.runDate), '_', pipeline().RunId)",
+            "type": "Expression"
+          }
+        }
+      },
+      {
+        "name": "DryRunGate",
+        "type": "IfCondition",
+        "dependsOn": [
+          {
+            "activity": "SetRunId",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "typeProperties": {
+          "expression": {
+            "value": "@equals(pipeline().parameters.dryRun, true)",
+            "type": "Expression"
+          },
+          "ifTrueActivities": [
+            {
+              "name": "PrintPlannedActivities",
+              "type": "SetVariable",
+              "dependsOn": [],
+              "typeProperties": {
+                "variableName": "plannedActivities",
+                "value": {
+                  "value": "@concat('DRY RUN ', variables('runId'), ' | lookbackMonths=', string(pipeline().parameters.lookbackMonths), ' riskScoreThreshold=', string(pipeline().parameters.riskScoreThreshold), ' logLevel=', pipeline().parameters.logLevel, ' | 1. Staging (', if(pipeline().parameters.skipStaging, 'SKIPPED', 'stg_customer_360 -> stg_txn_summary -> stg_risk_factors'), ') | 2. Analytics (', if(pipeline().parameters.skipAnalytics, 'SKIPPED', 'customer_segments -> txn_analytics -> risk_scoring -> data_products'), ') | 3. Post-run row-count validation and run-log write')",
+                  "type": "Expression"
+                }
+              }
+            }
+          ],
+          "ifFalseActivities": [
+            {
+              "name": "RunPipeline",
+              "type": "ExecutePipeline",
+              "dependsOn": [],
+              "typeProperties": {
+                "pipeline": {
+                  "referenceName": "pl_retail_banking_analytics_run",
+                  "type": "PipelineReference"
+                },
+                "waitOnCompletion": true,
+                "parameters": {
+                  "environment": { "value": "@pipeline().parameters.environment", "type": "Expression" },
+                  "runId": { "value": "@variables('runId')", "type": "Expression" },
+                  "skipStaging": { "value": "@pipeline().parameters.skipStaging", "type": "Expression" },
+                  "skipAnalytics": { "value": "@pipeline().parameters.skipAnalytics", "type": "Expression" },
+                  "lookbackMonths": { "value": "@pipeline().parameters.lookbackMonths", "type": "Expression" },
+                  "riskScoreThreshold": { "value": "@pipeline().parameters.riskScoreThreshold", "type": "Expression" },
+                  "logLevel": { "value": "@pipeline().parameters.logLevel", "type": "Expression" },
+                  "snowflakeAccountIdentifier": { "value": "@pipeline().parameters.snowflakeAccountIdentifier", "type": "Expression" },
+                  "snowflakeUser": { "value": "@pipeline().parameters.snowflakeUser", "type": "Expression" },
+                  "snowflakeRole": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" },
+                  "snowflakeWarehouse": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" },
+                  "snowflakeDatabaseCore": { "value": "@pipeline().parameters.snowflakeDatabaseCore", "type": "Expression" },
+                  "snowflakeDatabaseTxn": { "value": "@pipeline().parameters.snowflakeDatabaseTxn", "type": "Expression" },
+                  "snowflakeDatabaseStaging": { "value": "@pipeline().parameters.snowflakeDatabaseStaging", "type": "Expression" },
+                  "snowflakeDatabaseProducts": { "value": "@pipeline().parameters.snowflakeDatabaseProducts", "type": "Expression" },
+                  "keyVaultName": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" },
+                  "snowflakePrivateKeySecretName": { "value": "@pipeline().parameters.snowflakePrivateKeySecretName", "type": "Expression" },
+                  "minRowsStaging": { "value": "@pipeline().parameters.minRowsStaging", "type": "Expression" },
+                  "minRowsProducts": { "value": "@pipeline().parameters.minRowsProducts", "type": "Expression" }
+                }
+              }
+            },
+            {
+              "name": "SetFailureMessage",
+              "type": "SetVariable",
+              "dependsOn": [
+                {
+                  "activity": "RunPipeline",
+                  "dependencyConditions": ["Failed"]
+                }
+              ],
+              "typeProperties": {
+                "variableName": "failureMessage",
+                "value": {
+                  "value": "@concat('[', pipeline().parameters.environment, '] Retail Banking Analytics pipeline FAILED. Run: ', variables('runId'), '. Error: ', string(activity('RunPipeline').Error.message))",
+                  "type": "Expression"
+                }
+              }
+            },
+            {
+              "name": "GetAlertWebhook",
+              "type": "WebActivity",
+              "dependsOn": [
+                {
+                  "activity": "SetFailureMessage",
+                  "dependencyConditions": ["Succeeded"]
+                }
+              ],
+              "policy": {
+                "timeout": "0.00:05:00",
+                "retry": 1,
+                "retryIntervalInSeconds": 30,
+                "secureOutput": true,
+                "secureInput": true
+              },
+              "typeProperties": {
+                "url": {
+                  "value": "@concat('https://', pipeline().parameters.keyVaultName, '.vault.azure.net/secrets/', pipeline().parameters.alertWebhookSecretName, '?api-version=7.4')",
+                  "type": "Expression"
+                },
+                "method": "GET",
+                "authentication": {
+                  "type": "MSI",
+                  "resource": "https://vault.azure.net"
+                }
+              }
+            },
+            {
+              "name": "NotifyFailure",
+              "type": "WebActivity",
+              "dependsOn": [
+                {
+                  "activity": "GetAlertWebhook",
+                  "dependencyConditions": ["Succeeded"]
+                }
+              ],
+              "policy": {
+                "timeout": "0.00:05:00",
+                "retry": 2,
+                "retryIntervalInSeconds": 30,
+                "secureInput": true
+              },
+              "typeProperties": {
+                "url": {
+                  "value": "@activity('GetAlertWebhook').output.value",
+                  "type": "Expression"
+                },
+                "method": "POST",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "value": "@json(concat('{\"pipeline\":\"pl_retail_banking_analytics\",\"environment\":\"', pipeline().parameters.environment, '\",\"runId\":\"', variables('runId'), '\",\"text\":', string(variables('failureMessage')), '}'))",
+                  "type": "Expression"
+                }
+              }
+            },
+            {
+              "name": "FailPipeline",
+              "type": "Fail",
+              "dependsOn": [
+                {
+                  "activity": "NotifyFailure",
+                  "dependencyConditions": ["Completed"]
+                }
+              ],
+              "typeProperties": {
+                "message": {
+                  "value": "@variables('failureMessage')",
+                  "type": "Expression"
+                },
+                "errorCode": "1"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

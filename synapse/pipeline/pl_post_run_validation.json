@@ -1,0 +1,134 @@
+{
+  "name": "pl_post_run_validation",
+  "properties": {
+    "description": "Phase 3 - replaces the post-run BTEQ row-count block of orchestration/run_full_pipeline.sh. Counts the three staging tables and four data products, fails the run when a threshold is breached, and writes the run-log entry that replaces ETL_RUN_LOG.",
+    "folder": {
+      "name": "retail-banking-analytics"
+    },
+    "annotations": ["retail-banking-analytics", "migration", "MBA-2211"],
+    "parameters": {
+      "environment": { "type": "String" },
+      "runId": { "type": "String" },
+      "skipStaging": { "type": "Bool", "defaultValue": false },
+      "skipAnalytics": { "type": "Bool", "defaultValue": false },
+      "minRowsStaging": { "type": "Int", "defaultValue": 1 },
+      "minRowsProducts": { "type": "Int", "defaultValue": 1 },
+      "snowflakeAccountIdentifier": { "type": "String" },
+      "snowflakeUser": { "type": "String" },
+      "snowflakeRole": { "type": "String" },
+      "snowflakeWarehouse": { "type": "String" },
+      "snowflakeDatabaseStaging": { "type": "String" },
+      "snowflakeDatabaseProducts": { "type": "String" },
+      "keyVaultName": { "type": "String" },
+      "snowflakePrivateKeySecretName": { "type": "String" }
+    },
+    "activities": [
+      {
+        "name": "CheckRowCounts",
+        "type": "Script",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.00:30:00",
+          "retry": 1,
+          "retryIntervalInSeconds": 60,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "linkedServiceName": {
+          "referenceName": "ls_snowflake",
+          "type": "LinkedServiceReference",
+          "parameters": {
+            "accountIdentifier": { "value": "@pipeline().parameters.snowflakeAccountIdentifier", "type": "Expression" },
+            "user": { "value": "@pipeline().parameters.snowflakeUser", "type": "Expression" },
+            "database": { "value": "@pipeline().parameters.snowflakeDatabaseProducts", "type": "Expression" },
+            "warehouse": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" },
+            "role": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" },
+            "keyVaultName": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" },
+            "privateKeySecretName": { "value": "@pipeline().parameters.snowflakePrivateKeySecretName", "type": "Expression" }
+          }
+        },
+        "typeProperties": {
+          "scripts": [
+            {
+              "type": "Query",
+              "text": {
+                "value": "@concat('WITH COUNTS AS (', 'SELECT ''STG_CUSTOMER_360'' AS TABLE_NAME, ''STAGING'' AS LAYER, COUNT(*) AS ROW_COUNT FROM ', pipeline().parameters.snowflakeDatabaseStaging, '.STAGING.STG_CUSTOMER_360 UNION ALL ', 'SELECT ''STG_TXN_SUMMARY'', ''STAGING'', COUNT(*) FROM ', pipeline().parameters.snowflakeDatabaseStaging, '.STAGING.STG_TXN_SUMMARY UNION ALL ', 'SELECT ''STG_RISK_FACTORS'', ''STAGING'', COUNT(*) FROM ', pipeline().parameters.snowflakeDatabaseStaging, '.STAGING.STG_RISK_FACTORS UNION ALL ', 'SELECT ''CUSTOMER_SEGMENTS'', ''PRODUCT'', COUNT(*) FROM ', pipeline().parameters.snowflakeDatabaseProducts, '.DATA_PRODUCTS.CUSTOMER_SEGMENTS UNION ALL ', 'SELECT ''TRANSACTION_ANALYTICS'', ''PRODUCT'', COUNT(*) FROM ', pipeline().parameters.snowflakeDatabaseProducts, '.DATA_PRODUCTS.TRANSACTION_ANALYTICS UNION ALL ', 'SELECT ''CUSTOMER_RISK_SCORES'', ''PRODUCT'', COUNT(*) FROM ', pipeline().parameters.snowflakeDatabaseProducts, '.DATA_PRODUCTS.CUSTOMER_RISK_SCORES UNION ALL ', 'SELECT ''CUSTOMER_MASTER_PROFILE'', ''PRODUCT'', COUNT(*) FROM ', pipeline().parameters.snowflakeDatabaseProducts, '.DATA_PRODUCTS.CUSTOMER_MASTER_PROFILE', '), CHECKED AS (SELECT TABLE_NAME, ROW_COUNT, CASE WHEN LAYER = ''STAGING'' THEN ', string(pipeline().parameters.minRowsStaging), ' ELSE ', string(pipeline().parameters.minRowsProducts), ' END AS MIN_ROWS FROM COUNTS) ', 'SELECT SUM(CASE WHEN ROW_COUNT < MIN_ROWS THEN 1 ELSE 0 END) AS BREACH_COUNT, ', 'LISTAGG(TABLE_NAME || ''='' || TO_VARCHAR(ROW_COUNT) || ''/'' || TO_VARCHAR(MIN_ROWS), ''; '') WITHIN GROUP (ORDER BY TABLE_NAME) AS DETAIL FROM CHECKED')",
+                "type": "Expression"
+              }
+            }
+          ],
+          "scriptBlockExecutionTimeout": "00:30:00"
+        }
+      },
+      {
+        "name": "EvaluateRowCounts",
+        "type": "IfCondition",
+        "dependsOn": [
+          {
+            "activity": "CheckRowCounts",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "typeProperties": {
+          "expression": {
+            "value": "@greater(int(activity('CheckRowCounts').output.resultSets[0].rows[0].BREACH_COUNT), 0)",
+            "type": "Expression"
+          },
+          "ifTrueActivities": [
+            {
+              "name": "FailOnRowCountBreach",
+              "type": "Fail",
+              "dependsOn": [],
+              "typeProperties": {
+                "message": {
+                  "value": "@concat('Post-run row-count validation failed for run ', pipeline().parameters.runId, ' in ', pipeline().parameters.environment, '. Counts (actual/minimum): ', string(activity('CheckRowCounts').output.resultSets[0].rows[0].DETAIL))",
+                  "type": "Expression"
+                },
+                "errorCode": "99"
+              }
+            }
+          ],
+          "ifFalseActivities": [
+            {
+              "name": "WriteRunLog",
+              "type": "Script",
+              "dependsOn": [],
+              "policy": {
+                "timeout": "0.00:15:00",
+                "retry": 1,
+                "retryIntervalInSeconds": 30,
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "linkedServiceName": {
+                "referenceName": "ls_snowflake",
+                "type": "LinkedServiceReference",
+                "parameters": {
+                  "accountIdentifier": { "value": "@pipeline().parameters.snowflakeAccountIdentifier", "type": "Expression" },
+                  "user": { "value": "@pipeline().parameters.snowflakeUser", "type": "Expression" },
+                  "database": { "value": "@pipeline().parameters.snowflakeDatabaseStaging", "type": "Expression" },
+                  "warehouse": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" },
+                  "role": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" },
+                  "keyVaultName": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" },
+                  "privateKeySecretName": { "value": "@pipeline().parameters.snowflakePrivateKeySecretName", "type": "Expression" }
+                }
+              },
+              "typeProperties": {
+                "scripts": [
+                  {
+                    "type": "Query",
+                    "text": {
+                      "value": "@concat('INSERT INTO ', pipeline().parameters.snowflakeDatabaseStaging, '.OPS.PIPELINE_RUN_LOG (RUN_ID, PIPELINE_NAME, ENVIRONMENT, STEP_NAME, STATUS, DETAIL, LOG_TS) SELECT ''', pipeline().parameters.runId, ''', ''pl_retail_banking_analytics'', ''', pipeline().parameters.environment, ''', ''POST_RUN_VALIDATION'', ''SUCCEEDED'', ''staging_skipped=', string(pipeline().parameters.skipStaging), ' analytics_skipped=', string(pipeline().parameters.skipAnalytics), ' counts=', string(activity('CheckRowCounts').output.resultSets[0].rows[0].DETAIL), ''', CURRENT_TIMESTAMP()')",
+                      "type": "Expression"
+                    }
+                  }
+                ],
+                "scriptBlockExecutionTimeout": "00:15:00"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

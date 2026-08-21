@@ -8,6 +8,12 @@
 #   3. Post-run    -> Validation and notification
 #
 # Usage:  ./run_full_pipeline.sh [--skip-bteq] [--skip-sas] [--dry-run]
+#
+# SUPERSEDED (MBA-2211): the Snowflake/Synapse estate is orchestrated by the
+# Synapse pipeline pl_retail_banking_analytics in synapse/pipeline/. This script
+# remains for the Teradata/SAS estate until it is decommissioned. See
+# docs/modernization/orchestration_synapse_migration.md for the flag and
+# configuration mapping.
 # =============================================================================
 
 set -euo pipefail

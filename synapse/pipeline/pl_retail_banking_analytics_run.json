@@ -1,0 +1,150 @@
+{
+  "name": "pl_retail_banking_analytics_run",
+  "properties": {
+    "description": "Sequential, fail-fast execution of the staging and analytics phases followed by post-run validation. Mirrors the phase ordering of orchestration/run_full_pipeline.sh.",
+    "folder": {
+      "name": "retail-banking-analytics"
+    },
+    "annotations": ["retail-banking-analytics", "migration", "MBA-2211"],
+    "parameters": {
+      "environment": { "type": "String" },
+      "runId": { "type": "String" },
+      "skipStaging": { "type": "Bool", "defaultValue": false },
+      "skipAnalytics": { "type": "Bool", "defaultValue": false },
+      "lookbackMonths": { "type": "Int", "defaultValue": 12 },
+      "riskScoreThreshold": { "type": "Int", "defaultValue": 700 },
+      "logLevel": { "type": "String", "defaultValue": "INFO" },
+      "snowflakeAccountIdentifier": { "type": "String" },
+      "snowflakeUser": { "type": "String" },
+      "snowflakeRole": { "type": "String" },
+      "snowflakeWarehouse": { "type": "String" },
+      "snowflakeDatabaseCore": { "type": "String" },
+      "snowflakeDatabaseTxn": { "type": "String" },
+      "snowflakeDatabaseStaging": { "type": "String" },
+      "snowflakeDatabaseProducts": { "type": "String" },
+      "keyVaultName": { "type": "String" },
+      "snowflakePrivateKeySecretName": { "type": "String" },
+      "minRowsStaging": { "type": "Int", "defaultValue": 1 },
+      "minRowsProducts": { "type": "Int", "defaultValue": 1 }
+    },
+    "activities": [
+      {
+        "name": "StagingPhase",
+        "description": "Phase 1 - Snowflake staging models (replaces bteq/run_bteq_pipeline.sh). Skipped when skipStaging is true (--skip-bteq).",
+        "type": "IfCondition",
+        "dependsOn": [],
+        "typeProperties": {
+          "expression": {
+            "value": "@equals(pipeline().parameters.skipStaging, false)",
+            "type": "Expression"
+          },
+          "ifTrueActivities": [
+            {
+              "name": "RunStaging",
+              "type": "ExecutePipeline",
+              "dependsOn": [],
+              "typeProperties": {
+                "pipeline": {
+                  "referenceName": "pl_staging_snowflake",
+                  "type": "PipelineReference"
+                },
+                "waitOnCompletion": true,
+                "parameters": {
+                  "environment": { "value": "@pipeline().parameters.environment", "type": "Expression" },
+                  "runId": { "value": "@pipeline().parameters.runId", "type": "Expression" },
+                  "lookbackMonths": { "value": "@pipeline().parameters.lookbackMonths", "type": "Expression" },
+                  "logLevel": { "value": "@pipeline().parameters.logLevel", "type": "Expression" },
+                  "snowflakeDatabaseCore": { "value": "@pipeline().parameters.snowflakeDatabaseCore", "type": "Expression" },
+                  "snowflakeDatabaseTxn": { "value": "@pipeline().parameters.snowflakeDatabaseTxn", "type": "Expression" },
+                  "snowflakeDatabaseStaging": { "value": "@pipeline().parameters.snowflakeDatabaseStaging", "type": "Expression" },
+                  "snowflakeWarehouse": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" },
+                  "snowflakeRole": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" },
+                  "keyVaultName": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" }
+                }
+              }
+            }
+          ],
+          "ifFalseActivities": []
+        }
+      },
+      {
+        "name": "AnalyticsPhase",
+        "description": "Phase 2 - Synapse Spark analytics jobs (replaces sas/run_sas_pipeline.sh). Runs only when the staging phase succeeded or was skipped.",
+        "type": "IfCondition",
+        "dependsOn": [
+          {
+            "activity": "StagingPhase",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "typeProperties": {
+          "expression": {
+            "value": "@equals(pipeline().parameters.skipAnalytics, false)",
+            "type": "Expression"
+          },
+          "ifTrueActivities": [
+            {
+              "name": "RunAnalytics",
+              "type": "ExecutePipeline",
+              "dependsOn": [],
+              "typeProperties": {
+                "pipeline": {
+                  "referenceName": "pl_analytics_spark",
+                  "type": "PipelineReference"
+                },
+                "waitOnCompletion": true,
+                "parameters": {
+                  "environment": { "value": "@pipeline().parameters.environment", "type": "Expression" },
+                  "runId": { "value": "@pipeline().parameters.runId", "type": "Expression" },
+                  "riskScoreThreshold": { "value": "@pipeline().parameters.riskScoreThreshold", "type": "Expression" },
+                  "lookbackMonths": { "value": "@pipeline().parameters.lookbackMonths", "type": "Expression" },
+                  "logLevel": { "value": "@pipeline().parameters.logLevel", "type": "Expression" },
+                  "snowflakeDatabaseStaging": { "value": "@pipeline().parameters.snowflakeDatabaseStaging", "type": "Expression" },
+                  "snowflakeDatabaseProducts": { "value": "@pipeline().parameters.snowflakeDatabaseProducts", "type": "Expression" },
+                  "snowflakeWarehouse": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" },
+                  "snowflakeRole": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" },
+                  "keyVaultName": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" }
+                }
+              }
+            }
+          ],
+          "ifFalseActivities": []
+        }
+      },
+      {
+        "name": "PostRunValidation",
+        "description": "Phase 3 - row-count validation of staging tables and data products, plus the run-log entry.",
+        "type": "ExecutePipeline",
+        "dependsOn": [
+          {
+            "activity": "AnalyticsPhase",
+            "dependencyConditions": ["Succeeded"]
+          }
+        ],
+        "typeProperties": {
+          "pipeline": {
+            "referenceName": "pl_post_run_validation",
+            "type": "PipelineReference"
+          },
+          "waitOnCompletion": true,
+          "parameters": {
+            "environment": { "value": "@pipeline().parameters.environment", "type": "Expression" },
+            "runId": { "value": "@pipeline().parameters.runId", "type": "Expression" },
+            "skipStaging": { "value": "@pipeline().parameters.skipStaging", "type": "Expression" },
+            "skipAnalytics": { "value": "@pipeline().parameters.skipAnalytics", "type": "Expression" },
+            "minRowsStaging": { "value": "@pipeline().parameters.minRowsStaging", "type": "Expression" },
+            "minRowsProducts": { "value": "@pipeline().parameters.minRowsProducts", "type": "Expression" },
+            "snowflakeAccountIdentifier": { "value": "@pipeline().parameters.snowflakeAccountIdentifier", "type": "Expression" },
+            "snowflakeUser": { "value": "@pipeline().parameters.snowflakeUser", "type": "Expression" },
+            "snowflakeRole": { "value": "@pipeline().parameters.snowflakeRole", "type": "Expression" },
+            "snowflakeWarehouse": { "value": "@pipeline().parameters.snowflakeWarehouse", "type": "Expression" },
+            "snowflakeDatabaseStaging": { "value": "@pipeline().parameters.snowflakeDatabaseStaging", "type": "Expression" },
+            "snowflakeDatabaseProducts": { "value": "@pipeline().parameters.snowflakeDatabaseProducts", "type": "Expression" },
+            "keyVaultName": { "value": "@pipeline().parameters.keyVaultName", "type": "Expression" },
+            "snowflakePrivateKeySecretName": { "value": "@pipeline().parameters.snowflakePrivateKeySecretName", "type": "Expression" }
+          }
+        }
+      }
+    ]
+  }
+}
