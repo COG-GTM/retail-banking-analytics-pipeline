@@ -9,6 +9,11 @@
  * Downstream: DATA_PRODUCTS_DB.TRANSACTION_ANALYTICS
  *
  * SAS Products Used: Base SAS, SAS/STAT (PROC RANK, PROC MEANS)
+ *
+ * MIGRATED (MBA-2208 / TICKET-07): this program is superseded by the Synapse
+ * Spark job synapse/spark/jobs/txn_analytics_job.py, which reads and writes
+ * Snowflake. It is retained for parallel-run reconciliation only; see
+ * docs/modernization/ticket-07-txn-analytics.md.
  ******************************************************************************/
 
 options mprint mlogic symbolgen compress=yes;
