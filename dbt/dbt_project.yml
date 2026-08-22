@@ -1,0 +1,29 @@
+name: retail_banking_analytics
+version: 1.0.0
+config-version: 2
+
+profile: retail_banking_analytics
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+target-path: target
+clean-targets:
+  - target
+  - dbt_packages
+
+vars:
+  # Replaces the LOOKBACK_MONTHS shell export in config/pipeline_config.cfg.
+  # Override per run: dbt run --vars '{lookback_months: 6}'
+  lookback_months: 12
+  # Snowflake databases created by TICKET-01 / TICKET-02.
+  core_banking_database: CORE_BANKING
+  txn_processing_database: TXN_PROCESSING
+  etl_staging_database: ETL_STAGING
+
+models:
+  retail_banking_analytics:
+    staging:
+      +materialized: table
+      +schema: STAGING

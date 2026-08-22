@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: stg_txn_summary
+    description: >
+      Per-customer/account transaction summary over a configurable lookback window
+      (var lookback_months, default 12). Snowflake/dbt port of
+      bteq/02_stg_txn_summary.bteq.
+    columns:
+      - name: CUSTOMER_ID
+        description: Owning customer of the account.
+        tests:
+          - not_null
+      - name: ACCOUNT_ID
+        description: Account the metrics are aggregated for. Grain of the model.
+        tests:
+          - not_null
+          - unique
+      - name: SUMMARY_PERIOD_START
+        tests:
+          - not_null
+      - name: SUMMARY_PERIOD_END
+        tests:
+          - not_null
+      - name: TXN_COUNT_TOTAL
+        description: Posted transactions in the window.
+        tests:
+          - not_null
+      - name: TXN_COUNT_REVENUE
+        description: Posted transactions whose transaction type is flagged as revenue.
+      - name: AMT_TOTAL_REVENUE
+        description: Absolute dollar amount of revenue-flagged transactions.
+      - name: LOAD_TS
+        tests:
+          - not_null

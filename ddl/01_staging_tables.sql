@@ -43,8 +43,11 @@ PRIMARY INDEX (CUSTOMER_ID);
 -- -----------------------------------------------------------------------------
 -- STG_TXN_SUMMARY
 -- Aggregated transaction metrics per customer over configurable lookback.
--- Populated by: bteq/02_stg_txn_summary.bteq
+-- Populated by: bteq/02_stg_txn_summary.bteq (Teradata, deprecated)
+--               dbt/models/staging/stg_txn_summary.sql (Snowflake, current)
 -- Consumed by:  sas/02_sas_txn_analytics.sas
+-- Note: the Snowflake model adds TXN_COUNT_REVENUE, AMT_TOTAL_REVENUE, PCT_ACH
+--       and PCT_OTHER; channel-mix percentages sum to 100.
 -- -----------------------------------------------------------------------------
 CREATE MULTISET TABLE ETL_STAGING_DB.STG_TXN_SUMMARY, NO FALLBACK
 (

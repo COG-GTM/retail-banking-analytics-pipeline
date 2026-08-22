@@ -6,6 +6,9 @@
 /*              CORE_BANKING_DB.ACCOUNTS                                         */
 /* Target:      ETL_STAGING_DB.STG_TXN_SUMMARY                                  */
 /* Schedule:    Daily, 02:30 AM ET  (runs after 01_stg_customer_360)             */
+/* DEPRECATED:  Superseded by dbt/models/staging/stg_txn_summary.sql on          */
+/*              Snowflake (MBA-2205). Retained for reconciliation only; see      */
+/*              docs/modernization/ticket-04-stg-txn-summary.md.                 */
 /* ============================================================================= */
 
 .SET ERRORLEVEL 3807 SEVERITY 0;
