@@ -7,6 +7,13 @@
 /*              TXN_PROCESSING_DB.TRANSACTIONS, TRANSACTION_TYPES               */
 /* Target:      ETL_STAGING_DB.STG_RISK_FACTORS                                  */
 /* Schedule:    Daily, 03:00 AM ET  (runs after 02_stg_txn_summary)              */
+/*                                                                               */
+/* SUPERSEDED (MBA-2206 / TICKET-05): migrated to Snowflake dbt models           */
+/*              dbt/models/staging/stg_risk_factors.sql with the intermediate    */
+/*              models dbt/models/intermediate/int_daily_balance.sql and         */
+/*              int_payment_history.sql. Retained for parallel-run               */
+/*              reconciliation only - see                                        */
+/*              docs/modernization/TICKET-05_stg_risk_factors.md.                */
 /* ============================================================================= */
 
 .SET ERRORLEVEL 3807 SEVERITY 0;

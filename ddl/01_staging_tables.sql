@@ -80,6 +80,9 @@ PRIMARY INDEX (CUSTOMER_ID, ACCOUNT_ID);
 -- Pre-computed risk indicator features per customer for scoring models.
 -- Populated by: bteq/03_stg_risk_factors.bteq
 -- Consumed by:  sas/03_sas_risk_scoring.sas
+-- Superseded by (MBA-2206 / TICKET-05): dbt/models/staging/stg_risk_factors.sql,
+--   which builds ETL_STAGING.STG_RISK_FACTORS in Snowflake. The Teradata work
+--   tables WRK_DAILY_BALANCE / WRK_PAYMENT_HISTORY become ephemeral dbt models.
 -- -----------------------------------------------------------------------------
 CREATE MULTISET TABLE ETL_STAGING_DB.STG_RISK_FACTORS, NO FALLBACK
 (

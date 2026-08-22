@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: int_daily_balance
+    description: >
+      Ephemeral replacement for the Teradata work table
+      ETL_STAGING_DB.WRK_DAILY_BALANCE: last posted running balance per
+      account per day over the trailing 3 months.
+    columns:
+      - name: CUSTOMER_ID
+        description: Owning customer of the account.
+      - name: ACCOUNT_ID
+        description: Account the balance belongs to.
+      - name: TRANSACTION_DATE
+        description: Balance date.
+      - name: EOD_BALANCE
+        description: Running balance on the last posted transaction of the day.
+
+  - name: int_payment_history
+    description: >
+      Ephemeral replacement for the Teradata work table
+      ETL_STAGING_DB.WRK_PAYMENT_HISTORY: on-time/late payment counts per
+      credit or loan account over the trailing 24 months.
+    columns:
+      - name: CUSTOMER_ID
+        description: Owning customer of the account.
+      - name: ACCOUNT_ID
+        description: Credit or loan account.
+      - name: TOTAL_PAYMENTS
+        description: Payment transactions in the window.
+      - name: ONTIME_PAYMENTS
+        description: Payments posted on or before the due-date proxy.
+      - name: LATE_PAYMENTS
+        description: Payments posted after the due-date proxy.
+      - name: MONTHS_SINCE_LAST_LATE
+        description: Months since the most recent late payment, or since account open date.

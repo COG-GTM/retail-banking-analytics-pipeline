@@ -1,0 +1,35 @@
+name: 'retail_banking_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'retail_banking_analytics'
+
+model-paths: ['models']
+macro-paths: ['macros']
+test-paths: ['tests']
+analysis-paths: ['analyses']
+target-path: 'target'
+clean-targets: ['target', 'dbt_packages']
+
+vars:
+  # Source databases/schemas, migrated from Teradata by TICKET-01.
+  source_core_banking_database: 'CORE_BANKING_DB'
+  source_core_banking_schema: 'PUBLIC'
+  source_txn_processing_database: 'TXN_PROCESSING_DB'
+  source_txn_processing_schema: 'PUBLIC'
+  # Shared run-log relation (replacement for ETL_STAGING_DB.ETL_RUN_LOG).
+  etl_run_log_relation: 'ETL_STAGING_DB.PUBLIC.ETL_RUN_LOG'
+  # Lookback windows ported from the BTEQ scripts.
+  balance_lookback_months: 3
+  payment_lookback_months: 24
+  merchant_lookback_months: 6
+  fee_lookback_months: 12
+  large_withdrawal_threshold: 5000
+
+models:
+  retail_banking_analytics:
+    intermediate:
+      +materialized: ephemeral
+    staging:
+      +materialized: table
+      +schema: staging
