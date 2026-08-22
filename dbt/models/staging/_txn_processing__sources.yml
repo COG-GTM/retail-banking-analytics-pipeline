@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: txn_processing
+    description: >
+      Snowflake landing of the transaction processing tables (migrated from
+      Teradata TXN_PROCESSING_DB by TICKET-01). Database/schema are overridable
+      via the source_txn_processing_database / source_txn_processing_schema
+      vars so models can point at DEV/UAT/PROD without edits.
+    database: "{{ var('source_txn_processing_database', 'TXN_PROCESSING_DB') }}"
+    schema: "{{ var('source_txn_processing_schema', 'PUBLIC') }}"
+    tables:
+      - name: TRANSACTIONS
+      - name: TRANSACTION_TYPES
