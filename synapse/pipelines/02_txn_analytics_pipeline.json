@@ -1,0 +1,81 @@
+{
+  "name": "pl_02_txn_analytics",
+  "properties": {
+    "description": "Publishes DATA_PRODUCTS.TRANSACTION_ANALYTICS from ETL_STAGING.STG_TXN_SUMMARY. Replaces sas/02_sas_txn_analytics.sas (TICKET-07 / MBA-2208).",
+    "activities": [
+      {
+        "name": "SparkTxnAnalytics",
+        "type": "SynapseNotebook",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 1,
+          "retryIntervalInSeconds": 300,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "sparkPool": {
+            "referenceName": "@pipeline().parameters.sparkPool",
+            "type": "BigDataPoolReference"
+          },
+          "sparkJobDefinition": {
+            "referenceName": "sjd_txn_analytics",
+            "type": "SparkJobDefinitionReference"
+          },
+          "file": "abfss://artifacts@retailbankinganalytics.dfs.core.windows.net/spark/jobs/txn_analytics_job.py",
+          "args": [
+            "--env",
+            "@pipeline().parameters.env",
+            "--reporting-period",
+            "@pipeline().parameters.reportingPeriod",
+            "--snowflake-secret-scope",
+            "@pipeline().parameters.snowflakeSecretScope",
+            "--snowflake-warehouse",
+            "@pipeline().parameters.snowflakeWarehouse",
+            "--snowflake-role",
+            "@pipeline().parameters.snowflakeRole",
+            "--anomaly-rule",
+            "@pipeline().parameters.anomalyRule",
+            "--min-rows",
+            "@string(pipeline().parameters.minRows)"
+          ],
+          "conf": {
+            "spark.jars.packages": "net.snowflake:snowflake-jdbc:3.16.1,net.snowflake:spark-snowflake_2.12:2.15.0-spark_3.4",
+            "spark.sql.session.timeZone": "UTC"
+          },
+          "numExecutors": 4
+        }
+      },
+      {
+        "name": "FailOnJobError",
+        "type": "Fail",
+        "dependsOn": [
+          {
+            "activity": "SparkTxnAnalytics",
+            "dependencyConditions": ["Failed"]
+          }
+        ],
+        "typeProperties": {
+          "message": "@concat('TRANSACTION_ANALYTICS job failed for period ', pipeline().parameters.reportingPeriod, ' - see Spark driver log for the validation error.')",
+          "errorCode": "TXN_ANALYTICS_FAILED"
+        }
+      }
+    ],
+    "parameters": {
+      "env": { "type": "string", "defaultValue": "DEV" },
+      "reportingPeriod": {
+        "type": "string",
+        "defaultValue": "@formatDateTime(utcNow(), 'yyyy-MM')"
+      },
+      "sparkPool": { "type": "string", "defaultValue": "sparkpool01" },
+      "snowflakeSecretScope": { "type": "string", "defaultValue": "retail-banking-kv" },
+      "snowflakeWarehouse": { "type": "string", "defaultValue": "RETAIL_BANKING_ETL_WH" },
+      "snowflakeRole": { "type": "string", "defaultValue": "RETAIL_BANKING_ETL_ROLE" },
+      "anomalyRule": { "type": "string", "defaultValue": "sas_median_3iqr" },
+      "minRows": { "type": "int", "defaultValue": 1000 }
+    },
+    "annotations": ["migration", "azure-synapse", "pyspark", "MBA-2208"],
+    "folder": { "name": "retail-banking-analytics" }
+  }
+}
