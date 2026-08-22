@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: txn_processing
+    database: "{{ var('txn_processing_database') }}"
+    schema: RAW
+    tables:
+      - name: transactions
+      - name: transaction_types
+
+  - name: core_banking
+    database: "{{ var('core_banking_database') }}"
+    schema: RAW
+    tables:
+      - name: accounts
