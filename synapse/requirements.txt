@@ -1,0 +1,7 @@
+# Runtime dependencies for the Synapse Spark jobs.
+# PySpark itself is provided by the Synapse Spark pool (3.4+ runtime).
+numpy>=1.24
+
+# Local development / unit tests
+pyspark>=3.4
+pytest>=7.4
