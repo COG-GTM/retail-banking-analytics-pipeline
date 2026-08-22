@@ -1,4 +1,10 @@
 /*******************************************************************************
+ * MIGRATED (MBA-2210): superseded by synapse/pipeline_utils/snowflake_io.py
+ *   and synapse/pipeline_utils/secrets.py (Snowflake + Azure Key Vault).
+ * Retained for reference during parallel-run reconciliation only.
+ ******************************************************************************/
+
+/*******************************************************************************
  * Macro:   connect_teradata.sas
  * Purpose: Establish a SAS/ACCESS LIBNAME connection to Teradata and define
  *          standard library references used throughout the pipeline.

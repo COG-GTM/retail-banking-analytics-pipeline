@@ -1,4 +1,9 @@
 /*******************************************************************************
+ * MIGRATED (MBA-2210): superseded by synapse/pipeline_utils/validation.py.
+ * Retained for reference during parallel-run reconciliation only.
+ ******************************************************************************/
+
+/*******************************************************************************
  * Macro:   validate_table.sas
  * Purpose: Run standard quality checks against a Teradata or SAS table:
  *          row count > 0, no duplicate keys, null-rate thresholds.

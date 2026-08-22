@@ -1,0 +1,4 @@
+# Runtime dependencies for the Synapse Spark jobs.
+# PySpark itself is provided by the Synapse Spark pool runtime.
+azure-identity>=1.17.0
+azure-keyvault-secrets>=4.8.0

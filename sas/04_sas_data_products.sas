@@ -1,4 +1,10 @@
 /*******************************************************************************
+ * MIGRATED (MBA-2210): superseded by
+ *   synapse/jobs/data_products_master_profile.py (Azure Synapse Spark).
+ * Retained for reference during parallel-run reconciliation only.
+ ******************************************************************************/
+
+/*******************************************************************************
  * Program: 04_sas_data_products.sas
  * Purpose: Assemble the CUSTOMER_MASTER_PROFILE "golden record" by joining
  *          all three upstream data products:

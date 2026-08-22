@@ -1,4 +1,9 @@
 /*******************************************************************************
+ * MIGRATED (MBA-2210): superseded by synapse/pipeline_utils/run_log.py.
+ * Retained for reference during parallel-run reconciliation only.
+ ******************************************************************************/
+
+/*******************************************************************************
  * Macro:   log_step.sas
  * Purpose: Write a standardised log message with timestamp, step name, and
  *          optional row counts. Also inserts a record into the SAS-side
