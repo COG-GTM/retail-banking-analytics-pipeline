@@ -1,0 +1,49 @@
+version: 2
+
+models:
+  - name: stg_customer_360
+    description: >
+      Denormalized customer-360 staging table joining customers, accounts and
+      addresses. Snowflake/dbt migration of bteq/01_stg_customer_360.bteq
+      (target ETL_STAGING_DB.STG_CUSTOMER_360).
+    columns:
+      - name: CUSTOMER_ID
+        description: Natural key of the customer.
+        tests:
+          - unique
+          - not_null
+      - name: CUSTOMER_STATUS
+        description: A (active) or I (inactive); closed customers are excluded.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['A', 'I']
+      - name: AGE
+        description: Whole years derived from DATE_OF_BIRTH.
+      - name: TENURE_MONTHS
+        description: Whole months since CUSTOMER_SINCE.
+      - name: HAS_CHECKING
+        tests:
+          - accepted_values:
+              values: ['Y', 'N']
+      - name: HAS_SAVINGS
+        tests:
+          - accepted_values:
+              values: ['Y', 'N']
+      - name: HAS_CREDIT
+        tests:
+          - accepted_values:
+              values: ['Y', 'N']
+      - name: HAS_LOAN
+        tests:
+          - accepted_values:
+              values: ['Y', 'N']
+      - name: CREDIT_UTILIZATION_PCT
+        description: >
+          CREDIT_BALANCE / TOTAL_CREDIT_LIMIT * 100, 0.00 when the limit is
+          zero or NULL (divide-by-zero guard carried over from the BTEQ CASE).
+        tests:
+          - not_null
+      - name: LOAD_TS
+        tests:
+          - not_null
