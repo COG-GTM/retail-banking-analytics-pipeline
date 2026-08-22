@@ -39,6 +39,10 @@ PRIMARY INDEX (CUSTOMER_ID);
 -- Per-customer transaction behaviour summary with trend indicators.
 -- Refresh: Daily
 -- Consumers: Finance reporting, BI dashboards, Fraud team
+-- Migrated (TICKET-07 / MBA-2208): now produced on Azure Synapse Spark and
+-- published to RETAIL_BANKING_<ENV>.DATA_PRODUCTS.TRANSACTION_ANALYTICS in
+-- Snowflake with this same column list; see
+-- docs/modernization/TICKET-07_txn_analytics_synapse.md.
 -- -----------------------------------------------------------------------------
 CREATE MULTISET TABLE DATA_PRODUCTS_DB.TRANSACTION_ANALYTICS, NO FALLBACK
 (
