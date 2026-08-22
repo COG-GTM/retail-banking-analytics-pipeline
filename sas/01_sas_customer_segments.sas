@@ -8,6 +8,13 @@
  * Downstream: DATA_PRODUCTS_DB.CUSTOMER_SEGMENTS
  *
  * SAS Products Used: Base SAS, SAS/STAT (PROC FASTCLUS, PROC STDIZE)
+ *
+ * SUPERSEDED (MBA-2207): migrated to Azure Synapse Spark. The replacement job
+ * is synapse/spark/jobs/customer_segments.py, deployed via
+ * synapse/spark/jobdefinitions/customer_segments.json. Construct mapping,
+ * assumptions and reconciliation results:
+ * docs/modernization/synapse/06-customer-segments.md
+ * This program is retained for reference only and is no longer scheduled.
  ******************************************************************************/
 
 options mprint mlogic symbolgen compress=yes;
