@@ -1,0 +1,61 @@
+{
+  "name": "mba2207_customer_segments",
+  "properties": {
+    "description": "Customer segmentation (replaces sas/01_sas_customer_segments.sas). Reads STG_CUSTOMER_360 from Snowflake, runs k-means (k=5) and publishes CUSTOMER_SEGMENTS.",
+    "targetBigDataPool": {
+      "referenceName": "sparkpool-analytics",
+      "type": "BigDataPoolReference"
+    },
+    "requiredSparkVersion": "3.4",
+    "language": "python",
+    "jobProperties": {
+      "name": "mba2207_customer_segments",
+      "file": "abfss://artifacts@datalakeanalytics.dfs.core.windows.net/synapse/spark/jobs/customer_segments.py",
+      "args": [
+        "--sf-url",
+        "@{pipeline().parameters.snowflakeUrl}",
+        "--sf-user",
+        "@{pipeline().parameters.snowflakeUser}",
+        "--sf-role",
+        "@{pipeline().parameters.snowflakeRole}",
+        "--sf-warehouse",
+        "@{pipeline().parameters.snowflakeWarehouse}",
+        "--env",
+        "@{pipeline().parameters.environment}",
+        "--staging-database",
+        "@{pipeline().parameters.stagingDatabase}",
+        "--staging-schema",
+        "@{pipeline().parameters.stagingSchema}",
+        "--product-database",
+        "@{pipeline().parameters.productDatabase}",
+        "--product-schema",
+        "@{pipeline().parameters.productSchema}",
+        "--source-table",
+        "STG_CUSTOMER_360",
+        "--target-table",
+        "CUSTOMER_SEGMENTS",
+        "--key-vault",
+        "@{pipeline().parameters.keyVaultLinkedService}",
+        "--key-vault-secret",
+        "@{pipeline().parameters.snowflakeKeySecretName}",
+        "--seed",
+        "20260401",
+        "--min-rows",
+        "1000"
+      ],
+      "jars": [
+        "abfss://artifacts@datalakeanalytics.dfs.core.windows.net/jars/spark-snowflake_2.12-2.15.0-spark_3.4.jar",
+        "abfss://artifacts@datalakeanalytics.dfs.core.windows.net/jars/snowflake-jdbc-3.16.1.jar"
+      ],
+      "driverMemory": "28g",
+      "driverCores": 4,
+      "executorMemory": "28g",
+      "executorCores": 4,
+      "numExecutors": 3,
+      "conf": {
+        "spark.sql.session.timeZone": "UTC",
+        "spark.dynamicAllocation.enabled": "false"
+      }
+    }
+  }
+}
