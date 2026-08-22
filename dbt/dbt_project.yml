@@ -1,0 +1,27 @@
+name: retail_banking_analytics
+version: 1.0.0
+config-version: 2
+
+profile: retail_banking_analytics
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+analysis-paths: ["analyses"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Snowflake layout defined by TICKET-01 / TICKET-02 (DEV | UAT | PROD suffixes).
+  env_suffix: DEV
+  core_banking_database: CORE_BANKING_DB_DEV
+  core_banking_schema: CORE_BANKING
+  staging_database: ETL_STAGING_DB_DEV
+  staging_schema: ETL_STAGING
+  # Shared run-log relation replacing ETL_STAGING_DB.ETL_RUN_LOG.
+  run_log_relation: ETL_STAGING_DB_DEV.ETL_STAGING.ETL_RUN_LOG
+
+models:
+  retail_banking_analytics:
+    staging:
+      +materialized: table

@@ -1,0 +1,17 @@
+# Example dbt profile. Credentials resolve from Azure Key Vault at runtime
+# (see TICKET-02); no secrets are stored in this repository.
+retail_banking_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      private_key_passphrase: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PASSPHRASE') }}"
+      role: TRANSFORMER_DEV
+      warehouse: WH_ELT_DEV
+      database: ETL_STAGING_DB_DEV
+      schema: ETL_STAGING
+      threads: 4
+      client_session_keep_alive: false

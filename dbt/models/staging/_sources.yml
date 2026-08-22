@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: core_banking
+    description: >
+      Operational customer/account data. Replaces the Teradata CORE_BANKING_DB
+      database; Snowflake database/schema naming comes from TICKET-01.
+    database: "{{ var('core_banking_database') }}"
+    schema: "{{ var('core_banking_schema') }}"
+    tables:
+      - name: customers
+      - name: accounts
+      - name: addresses
