@@ -37,6 +37,7 @@ pipelines, producing a final set of certified **data product** tables.
 demo/
 ├── README.md                              # This file
 ├── config/
+│   ├── load_pipeline_config.sh            # Validating KEY=VALUE config loader
 │   └── pipeline_config.cfg                # Environment variables, DB refs, paths
 ├── ddl/
 │   ├── 00_source_tables.sql               # Source table DDL (documentation)
@@ -62,6 +63,12 @@ demo/
 └── docs/
     └── pipeline_flow.md                   # Detailed technical documentation
 ```
+
+### Configuration
+
+`pipeline_config.cfg` is parsed as data with allowlisted keys and validated values; it is never executed as shell.
+Deploy it owned by the service account or root with mode `0640`.
+The loader refuses configuration files that are group- or world-writable.
 
 ## Pipeline Phases
 
