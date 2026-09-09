@@ -13,7 +13,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "${SCRIPT_DIR}/../config/pipeline_config.cfg"
+source "${SCRIPT_DIR}/../config/load_pipeline_config.sh"
 
 # ---------------------------------------------------------------------------
 # Parse arguments
