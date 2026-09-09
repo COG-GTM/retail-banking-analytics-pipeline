@@ -28,8 +28,9 @@ run_bteq() {
 
     log "START: ${script_name}"
 
-    # Substitute environment variables in the BTEQ script and execute
-    envsubst < "${script_path}" | bteq > "${log_file}" 2>&1
+    # Substitute only the validated logon variables in the BTEQ script and execute
+    validate_td_logon || return 1
+    envsubst "${BTEQ_SUBST_VARS}" < "${script_path}" | bteq > "${log_file}" 2>&1
     local rc=$?
 
     if [ ${rc} -ne 0 ]; then
