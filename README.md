@@ -37,7 +37,8 @@ pipelines, producing a final set of certified **data product** tables.
 demo/
 ├── README.md                              # This file
 ├── config/
-│   └── pipeline_config.cfg                # Environment variables, DB refs, paths
+│   └── pipeline_config.cfg                # Inert KEY=VALUE config (DB refs, paths, params)
+│   └── load_config.sh                     # Parses + validates config, exports env vars
 ├── ddl/
 │   ├── 00_source_tables.sql               # Source table DDL (documentation)
 │   ├── 01_staging_tables.sql              # BTEQ staging table DDL
