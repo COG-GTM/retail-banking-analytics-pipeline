@@ -100,7 +100,8 @@ fi
 log "--- Phase 3: Post-Run Validation ---"
 
 # Quick row-count validation via BTEQ
-envsubst <<'BTEQ_EOF' | bteq >> "${MASTER_LOG}" 2>&1
+validate_td_logon
+envsubst "${BTEQ_SUBST_VARS}" <<'BTEQ_EOF' | bteq >> "${MASTER_LOG}" 2>&1
 .LOGON ${TD_SERVER}/${TD_USERNAME},;
 
 SELECT 'CUSTOMER_SEGMENTS'     AS TBL, COUNT(*) AS ROWS FROM DATA_PRODUCTS_DB.CUSTOMER_SEGMENTS
