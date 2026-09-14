@@ -1,3 +1,9 @@
+"""Bronze ingestion for source CSVs and Auto Loader landing files.
+
+Residual external-source credentials belong in environment secret scopes, for
+example: ``dbutils.secrets.get(scope="retail-banking-dev", key="td-server")``.
+"""
+
 from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
@@ -134,6 +140,7 @@ def ingest_batch(spark: SparkSession, cfg: RunConfig, source_dir: str) -> None:
 def ingest_autoloader(
     spark: SparkSession, cfg: RunConfig, landing_dir: str, checkpoint_dir: str
 ) -> None:
+    """Ingest landing files; external credentials belong in dbutils secret scopes."""
     for table, schema in SOURCE_SCHEMAS.items():
         (
             spark.readStream.format("cloudFiles")

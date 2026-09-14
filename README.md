@@ -4,6 +4,16 @@ An end-to-end data engineering demo showing **Teradata BTEQ** scripts transformi
 operational tables into staging datasets, which then flow into **SAS** analytical
 pipelines, producing a final set of certified **data product** tables.
 
+## Databricks re-platform
+
+The active implementation is the Azure Databricks medallion pipeline. See
+[`databricks/README.md`](databricks/README.md) for the Unity Catalog model,
+bundle deployment, orchestration DAG, local parity harness, and migration notes.
+
+The Teradata/BTEQ/SAS sections below are **legacy reference documentation**;
+they remain in this repository to explain the source behavior and migration
+mapping.
+
 ## Architecture
 
 ```
@@ -31,7 +41,7 @@ pipelines, producing a final set of certified **data product** tables.
  │                                                          (golden record assembly)     (enterprise-wide view)
 ```
 
-## Directory Structure
+## Legacy directory structure
 
 ```
 demo/
@@ -63,7 +73,7 @@ demo/
     └── pipeline_flow.md                   # Detailed technical documentation
 ```
 
-## Pipeline Phases
+## Legacy pipeline phases
 
 ### Phase 1: Teradata BTEQ Staging
 
@@ -115,7 +125,7 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 | **CUSTOMER_RISK_SCORES** | Composite risk scores with probability of default | Credit, Collections |
 | **CUSTOMER_MASTER_PROFILE** | Golden record joining all products | Enterprise-wide |
 
-## Running the Pipeline
+## Legacy pipeline commands
 
 ```bash
 # Full end-to-end run
@@ -131,12 +141,13 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 ./orchestration/run_full_pipeline.sh --dry-run
 ```
 
-## Prerequisites
+## Databricks prerequisites
 
-- **Teradata**: BTEQ client (TTU 17.x+), service account with SELECT on source DBs
-  and ALL on staging/data product DBs
-- **SAS**: SAS 9.4 M7+ with Base SAS, SAS/STAT, SAS/ACCESS Interface to Teradata
-- **Shell**: bash 4+, `envsubst` (from gettext)
+- Python 3.10+
+- Java 11+
+- PySpark 3.5.1 and Delta Spark 3.2.0
+- scikit-learn, MLflow, pandas, pytest, and Ruff
+- The current Databricks CLI for bundle deployment
 
 ## Reference Repositories
 

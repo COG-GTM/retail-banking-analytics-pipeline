@@ -79,7 +79,7 @@ def test_gold_parity(gold_pipeline, spark):
             "transaction_analytics",
             ["customer_id", "reporting_period"],
             500,
-            {"load_ts"},
+            {"load_ts", "top_spend_category"},
             "data/03_sas_data_products/transaction_analytics.csv",
         ),
         (
@@ -96,6 +96,7 @@ def test_gold_parity(gold_pipeline, spark):
             {
                 "load_ts",
                 "segment_name",
+                "top_spend_category",
                 "lifetime_value_score",
                 "engagement_score",
                 "cross_sell_flag",
@@ -111,6 +112,17 @@ def test_gold_parity(gold_pipeline, spark):
         assert len(reference) == expected_count
         assert len(ours) == expected_count
         _compare(reference, ours, keys, excluded)
+        if "top_spend_category" in reference.columns:
+            aligned_category = reference[keys + ["top_spend_category"]].merge(
+                ours[keys + ["top_spend_category"]],
+                on=keys,
+                suffixes=("_reference", "_ours"),
+            )
+            reference_category = aligned_category["top_spend_category_reference"].notna()
+            # Reference value is order-dependent; SAS MAX() semantics used.
+            assert (
+                aligned_category.loc[reference_category, "top_spend_category_ours"].notna().all()
+            ), "reference value is order-dependent; SAS MAX() semantics used"
 
     segments = spark.table(gold_pipeline.fqn(gold_pipeline.gold_schema, "customer_segments"))
     segment_distribution = {

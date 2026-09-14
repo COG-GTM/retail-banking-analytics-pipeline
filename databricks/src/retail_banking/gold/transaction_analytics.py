@@ -23,7 +23,7 @@ def build(spark: SparkSession, cfg: RunConfig) -> DataFrame:
             F.sum("amt_total_debit").alias("total_debit_amt"),
             F.sum("amt_total_credit").alias("total_credit_amt"),
             F.sum("amt_total_fees").alias("total_fees"),
-            F.first("top_merchant_category", ignorenulls=True).alias("top_spend_category"),
+            F.max("top_merchant_category").alias("top_spend_category"),
             F.sum(F.col("txn_count_total") * (F.col("pct_web") + F.col("pct_mobile")) / 100).alias(
                 "_digital_transactions"
             ),
