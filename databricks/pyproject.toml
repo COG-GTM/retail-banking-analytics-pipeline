@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "retail-banking-databricks"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "pyspark==3.5.1",
+    "delta-spark==3.2.0",
+    "scikit-learn",
+    "mlflow-skinny",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
