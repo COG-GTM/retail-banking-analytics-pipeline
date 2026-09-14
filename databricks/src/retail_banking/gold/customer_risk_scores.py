@@ -62,7 +62,7 @@ def _risk_features(spark: SparkSession, cfg: RunConfig) -> DataFrame:
         "customer_id",
     )
     bureau_score = F.when(
-        F.col("external_credit_score") <= 0,
+        F.col("external_credit_score").isNull() | (F.col("external_credit_score") <= 0),
         680,
     ).otherwise(F.col("external_credit_score"))
     bureau_norm = (bureau_score - 300) / 550 * 100
