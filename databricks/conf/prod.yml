@@ -1,0 +1,8 @@
+catalog: retail_banking_prod
+bronze_core_schema: core_banking
+bronze_txn_schema: txn_processing
+silver_schema: etl_staging
+gold_schema: data_products
+dq_min_rows: 1000
+mlflow_experiment: /Shared/retail_banking/prod
+secret_scope: retail-banking-prod

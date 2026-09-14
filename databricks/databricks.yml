@@ -1,0 +1,46 @@
+bundle:
+  name: retail_banking_analytics
+
+include:
+  - resources/*.yml
+
+variables:
+  workspace_host:
+    description: Databricks workspace URL
+    default: https://example.cloud.databricks.com
+  catalog:
+    description: Unity Catalog catalog
+    default: retail_banking_dev
+  source_path:
+    description: Source CSV or Auto Loader landing path
+    default: /Volumes/retail_banking_dev/core_banking/landing
+  mlflow_experiment:
+    description: MLflow experiment path
+    default: /Shared/retail_banking
+  dq_min_rows:
+    description: Minimum accepted row count
+    default: "1000"
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://example.cloud.databricks.com
+    variables:
+      catalog: retail_banking_dev
+      dq_min_rows: "1"
+  uat:
+    mode: development
+    workspace:
+      host: https://example.cloud.databricks.com
+    variables:
+      catalog: retail_banking_uat
+      dq_min_rows: "1000"
+  prod:
+    mode: production
+    workspace:
+      host: https://example.cloud.databricks.com
+    variables:
+      catalog: retail_banking_prod
+      dq_min_rows: "1000"
