@@ -2,6 +2,12 @@ from pathlib import Path
 
 from retail_banking.bronze.ingest import ingest_batch
 from retail_banking.config import RunConfig
+from retail_banking.gold import (
+    customer_master_profile,
+    customer_risk_scores,
+    customer_segments,
+    transaction_analytics,
+)
 from retail_banking.silver import stg_customer_360, stg_risk_factors, stg_txn_summary
 
 REPO_ROOT = Path(__file__).parents[2]
@@ -15,6 +21,13 @@ def run_silver(spark, cfg: RunConfig):
     stg_customer_360.run(spark, cfg)
     stg_txn_summary.run(spark, cfg)
     stg_risk_factors.run(spark, cfg)
+
+
+def run_gold(spark, cfg: RunConfig):
+    customer_segments.run(spark, cfg)
+    transaction_analytics.run(spark, cfg)
+    customer_risk_scores.run(spark, cfg)
+    return customer_master_profile.run(spark, cfg)
 
 
 def main():
