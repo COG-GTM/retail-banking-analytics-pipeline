@@ -38,7 +38,7 @@ databricks/
 | `sas/04_sas_data_products.sas` | `gold/customer_master_profile.py` + notebook `07` |
 | `sas/macros/validate_table.sas` | `src/retail_banking/validation.py` |
 | `sas/macros/log_step.sas` + `WORK.PIPELINE_AUDIT` | `src/retail_banking/logging_utils.py` + `etl_staging.pipeline_audit` |
-| `orchestration/run_full_pipeline.sh` | Asset bundle job + `00_resolve_run_mode.py` (`--skip-bteq`→`skip_silver`, `--skip-sas`→`skip_gold`, `--dry-run`→`dry_run`) |
+| `orchestration/run_full_pipeline.sh` | Asset bundle job + `00_resolve_run_mode.py` + `silver_gate`/`gold_gate` condition tasks (`--skip-bteq`→`skip_silver`, `--skip-sas`→`skip_gold`, `--dry-run`→`dry_run`) |
 | Final BTEQ row-count `UNION ALL` | `notebooks/90_row_count_validation.py` |
 | `ddl/01_staging_tables.sql` | `ddl/01_silver_tables.sql` |
 | `ddl/02_data_product_tables.sql` | `ddl/02_gold_tables.sql` |
@@ -94,6 +94,22 @@ databricks bundle run retail_banking_pipeline -t dev \
 databricks bundle run retail_banking_pipeline -t dev \
   --params skip_silver=true,dry_run=true
 ```
+
+### Workflow / run-mode gating
+
+`resolve_run_mode` sets `run_silver` / `run_gold` task values from the
+`skip_silver`, `skip_gold`, and `dry_run` job parameters (`dry_run=true`
+prints the planned step list and forces both to `false`). Two
+`condition_task` gates implement the skip semantics:
+
+- `silver_gate` (after `resolve_run_mode`) passes only when
+  `run_silver == "true"`; `bronze_ingest` and the three silver tasks run
+  on `outcome: "true"`.
+- `gold_gate` depends on all three silver tasks plus `resolve_run_mode`
+  with `run_if: ALL_DONE`, so it still evaluates (and correctly fails the
+  gate) when silver was skipped. The three leaf gold tasks run on
+  `outcome: "true"`; `customer_master_profile` → `row_count_validation` →
+  `parity_check` chain unchanged.
 
 `bronze_ingest` accepts `source_mode=jdbc` (Teradata via JDBC + secrets) or
 `source_mode=csv` (CSV files in `/Volumes/<catalog>/core_banking/landing/`).
