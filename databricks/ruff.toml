@@ -1,0 +1,8 @@
+target-version = "py310"
+line-length = 100
+
+[lint]
+ignore = ["DTZ005", "DTZ011", "UP037"]
+
+[lint.per-file-ignores]
+"notebooks/**/*.py" = ["F821", "E402"]

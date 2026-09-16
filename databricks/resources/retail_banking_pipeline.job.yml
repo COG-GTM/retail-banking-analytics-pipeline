@@ -1,0 +1,173 @@
+resources:
+  jobs:
+    retail_banking_pipeline:
+      name: retail_banking_pipeline
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: run_date
+          default: ${var.run_date}
+        - name: lookback_months
+          default: ${var.lookback_months}
+      job_clusters:
+        - job_cluster_key: pipeline_cluster
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            num_workers: 2
+            data_security_mode: SINGLE_USER
+      tasks:
+        - task_key: resolve_run_mode
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/00_resolve_run_mode.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: ${var.run_date}
+              lookback_months: ${var.lookback_months}
+              skip_silver: ${var.skip_silver}
+              skip_gold: ${var.skip_gold}
+              dry_run: ${var.dry_run}
+          libraries:
+            - whl: ../dist/retail_banking-*.whl
+
+        - task_key: bronze_ingest
+          depends_on:
+            - task_key: resolve_run_mode
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/00_bronze_ingest.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: ${var.run_date}
+              lookback_months: ${var.lookback_months}
+              source_mode: csv
+          libraries:
+            - whl: ../dist/retail_banking-*.whl
+
+        - task_key: stg_customer_360
+          depends_on:
+            - task_key: bronze_ingest
+          job_cluster_key: pipeline_cluster
+          condition: '{{tasks.resolve_run_mode.values.run_silver}} == "true"'
+          notebook_task:
+            notebook_path: ../notebooks/silver/01_stg_customer_360.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: ${var.run_date}
+              lookback_months: ${var.lookback_months}
+          libraries:
+            - whl: ../dist/retail_banking-*.whl
+
+        - task_key: stg_txn_summary
+          depends_on:
+            - task_key: bronze_ingest
+          job_cluster_key: pipeline_cluster
+          condition: '{{tasks.resolve_run_mode.values.run_silver}} == "true"'
+          notebook_task:
+            notebook_path: ../notebooks/silver/02_stg_txn_summary.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: ${var.run_date}
+              lookback_months: ${var.lookback_months}
+          libraries:
+            - whl: ../dist/retail_banking-*.whl
+
+        - task_key: stg_risk_factors
+          depends_on:
+            - task_key: bronze_ingest
+          job_cluster_key: pipeline_cluster
+          condition: '{{tasks.resolve_run_mode.values.run_silver}} == "true"'
+          notebook_task:
+            notebook_path: ../notebooks/silver/03_stg_risk_factors.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: ${var.run_date}
+              lookback_months: ${var.lookback_months}
+          libraries:
+            - whl: ../dist/retail_banking-*.whl
+
+        - task_key: customer_segments
+          depends_on:
+            - task_key: stg_customer_360
+          job_cluster_key: pipeline_cluster
+          condition: '{{tasks.resolve_run_mode.values.run_gold}} == "true"'
+          notebook_task:
+            notebook_path: ../notebooks/gold/04_customer_segments.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: ${var.run_date}
+              lookback_months: ${var.lookback_months}
+          libraries:
+            - whl: ../dist/retail_banking-*.whl
+
+        - task_key: transaction_analytics
+          depends_on:
+            - task_key: stg_txn_summary
+          job_cluster_key: pipeline_cluster
+          condition: '{{tasks.resolve_run_mode.values.run_gold}} == "true"'
+          notebook_task:
+            notebook_path: ../notebooks/gold/05_transaction_analytics.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: ${var.run_date}
+              lookback_months: ${var.lookback_months}
+          libraries:
+            - whl: ../dist/retail_banking-*.whl
+
+        - task_key: customer_risk_scores
+          depends_on:
+            - task_key: stg_risk_factors
+            - task_key: stg_customer_360
+          job_cluster_key: pipeline_cluster
+          condition: '{{tasks.resolve_run_mode.values.run_gold}} == "true"'
+          notebook_task:
+            notebook_path: ../notebooks/gold/06_customer_risk_scores.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: ${var.run_date}
+              lookback_months: ${var.lookback_months}
+          libraries:
+            - whl: ../dist/retail_banking-*.whl
+
+        - task_key: customer_master_profile
+          depends_on:
+            - task_key: customer_segments
+            - task_key: transaction_analytics
+            - task_key: customer_risk_scores
+          job_cluster_key: pipeline_cluster
+          condition: '{{tasks.resolve_run_mode.values.run_gold}} == "true"'
+          notebook_task:
+            notebook_path: ../notebooks/gold/07_customer_master_profile.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: ${var.run_date}
+              lookback_months: ${var.lookback_months}
+          libraries:
+            - whl: ../dist/retail_banking-*.whl
+
+        - task_key: row_count_validation
+          depends_on:
+            - task_key: customer_master_profile
+          job_cluster_key: pipeline_cluster
+          condition: '{{tasks.resolve_run_mode.values.run_gold}} == "true"'
+          notebook_task:
+            notebook_path: ../notebooks/90_row_count_validation.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: ${var.run_date}
+              lookback_months: ${var.lookback_months}
+          libraries:
+            - whl: ../dist/retail_banking-*.whl
+
+        - task_key: parity_check
+          depends_on:
+            - task_key: row_count_validation
+          job_cluster_key: pipeline_cluster
+          notebook_task:
+            notebook_path: ../notebooks/91_parity_check.py
+            base_parameters:
+              catalog: ${var.catalog}
+              run_date: ${var.run_date}
+              lookback_months: ${var.lookback_months}
+          libraries:
+            - whl: ../dist/retail_banking-*.whl
