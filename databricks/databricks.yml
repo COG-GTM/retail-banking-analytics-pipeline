@@ -1,0 +1,42 @@
+bundle:
+  name: retail_banking_analytics
+
+variables:
+  catalog:
+    description: Unity Catalog target catalog
+    default: retail_banking_dev
+  run_date:
+    description: Pipeline run date (YYYY-MM-DD); empty = today
+    default: ""
+  lookback_months:
+    description: Transaction lookback window in months
+    default: 12
+  skip_silver:
+    description: Skip silver (staging) tasks
+    default: "false"
+  skip_gold:
+    description: Skip gold (data product) tasks
+    default: "false"
+  dry_run:
+    description: List planned steps only, run nothing
+    default: "false"
+
+artifacts:
+  retail_banking_whl:
+    type: whl
+    build: uv build
+    path: .
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      catalog: retail_banking_dev
+  prod:
+    mode: production
+    variables:
+      catalog: retail_banking
