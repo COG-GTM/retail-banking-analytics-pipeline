@@ -1,0 +1,8 @@
+# Local DuckDB databases produced by the Airflow / DuckDB path
+local/duckdb/*.db
+local/duckdb/*.db.wal
+__pycache__/
+*.pyc
+.pytest_cache/
+# Local Airflow home (if AIRFLOW_HOME is pointed inside the repo)
+airflow_home/

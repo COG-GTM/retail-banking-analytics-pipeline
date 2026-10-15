@@ -8,6 +8,11 @@
 #   3. Post-run    -> Validation and notification
 #
 # Usage:  ./run_full_pipeline.sh [--skip-bteq] [--skip-sas] [--dry-run]
+#
+# DEPRECATED (legacy enterprise path): requires Teradata BTEQ + SAS 9.4.
+# The local replacement is the Airflow DAG in
+# orchestration/dags/retail_banking_pipeline_dag.py (DuckDB + pandas +
+# scikit-learn). See README.md "Running Locally with Airflow".
 # =============================================================================
 
 set -euo pipefail

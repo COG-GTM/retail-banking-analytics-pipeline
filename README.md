@@ -58,7 +58,16 @@ demo/
 │   ├── 04_sas_data_products.sas           # Golden record assembly
 │   └── run_sas_pipeline.sh               # SAS orchestrator
 ├── orchestration/
-│   └── run_full_pipeline.sh              # End-to-end master orchestrator
+│   ├── run_full_pipeline.sh              # Legacy end-to-end master orchestrator (BTEQ + SAS)
+│   └── dags/
+│       └── retail_banking_pipeline_dag.py # Airflow DAG (local DuckDB replacement)
+├── local/
+│   └── duckdb/
+│       └── run_demo.py                    # Local engine: synthetic data, DuckDB SQL, pandas/sklearn
+├── tests/
+│   └── test_pipeline.py                   # Engine + DAG tests (pytest)
+├── export_data.py                         # Regenerates data/ CSVs via the local engine
+├── requirements-airflow.txt               # Airflow + DuckDB + analytics dependencies
 └── docs/
     └── pipeline_flow.md                   # Detailed technical documentation
 ```
@@ -115,7 +124,75 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 | **CUSTOMER_RISK_SCORES** | Composite risk scores with probability of default | Credit, Collections |
 | **CUSTOMER_MASTER_PROFILE** | Golden record joining all products | Enterprise-wide |
 
-## Running the Pipeline
+## Running Locally with Airflow (DuckDB + pandas + scikit-learn)
+
+A fully local replacement for the Teradata/SAS path. No Teradata or SAS is required:
+synthetic source data is generated with Faker/NumPy, the three BTEQ scripts are ported to
+DuckDB SQL, and the four SAS programs are ported to pandas/scikit-learn
+(PROC STDIZE + FASTCLUS -> `StandardScaler` + `KMeans`, PROC LOGISTIC -> `LogisticRegression`,
+PROC RANK/MEANS -> pandas percentile ranks + IQR anomaly flags).
+
+| Component | Path |
+|-----------|------|
+| Engine (source generation, staging SQL, analytics, validation) | `local/duckdb/run_demo.py` |
+| Airflow DAG `retail_banking_pipeline` | `orchestration/dags/retail_banking_pipeline_dag.py` |
+| Dependencies | `requirements-airflow.txt` |
+| Output database (persisted, git-ignored) | `local/duckdb/airflow_local.db` |
+
+Task graph (mirrors `run_full_pipeline.sh`; any task exception fails the run and skips downstream tasks,
+and `validate_row_counts` fails if a data product table is empty):
+
+```
+generate_source_data -> stg_customer_360 -> stg_txn_summary -> stg_risk_factors
+  -> customer_segments -> txn_analytics -> risk_scoring -> data_products -> validate_row_counts
+```
+
+**Prerequisites:** Python 3.10+ (3.10-3.12 recommended for Airflow 2.x), `pip`.
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+AIRFLOW_VERSION=2.10.5
+PY_VER="$(python -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
+pip install -r requirements-airflow.txt \
+  --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PY_VER}.txt"
+
+export AIRFLOW_HOME="$HOME/airflow"
+export AIRFLOW__CORE__DAGS_FOLDER="$PWD/orchestration/dags"
+export AIRFLOW__CORE__LOAD_EXAMPLES=False
+airflow db migrate
+airflow dags list | grep retail_banking_pipeline
+
+# Execute the full task graph locally (no scheduler/webserver needed)
+airflow dags test retail_banking_pipeline
+```
+
+Optional environment variables:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `RETAIL_BANKING_DUCKDB_PATH` | `local/duckdb/airflow_local.db` | DuckDB file written by every task |
+| `RETAIL_BANKING_N_CUSTOMERS` | `5000` | Synthetic customers to generate |
+| `RETAIL_BANKING_SEED` | `42` | Random seed for reproducible data |
+
+Inspect the results:
+
+```bash
+python -c "import duckdb; c = duckdb.connect('local/duckdb/airflow_local.db', read_only=True); \
+  print(c.sql(\"SELECT schema_name, table_name, estimated_size FROM duckdb_tables() ORDER BY 1, 2\"))"
+```
+
+Other entry points using the same engine:
+
+```bash
+python local/duckdb/run_demo.py --customers 5000      # stand-alone end-to-end run (no Airflow)
+uv run export_data.py --customers 500                 # regenerate the CSVs under data/
+python -m pytest tests                                # engine + DAG structure tests
+```
+
+## Running the Legacy Enterprise Pipeline (Teradata BTEQ + SAS)
+
+> The shell/BTEQ/SAS scripts below are retained as the legacy enterprise path. They require
+> Teradata and SAS and are not runnable locally; use the Airflow path above for local runs.
 
 ```bash
 # Full end-to-end run
@@ -131,7 +208,7 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 ./orchestration/run_full_pipeline.sh --dry-run
 ```
 
-## Prerequisites
+## Prerequisites (legacy enterprise path)
 
 - **Teradata**: BTEQ client (TTU 17.x+), service account with SELECT on source DBs
   and ALL on staging/data product DBs
