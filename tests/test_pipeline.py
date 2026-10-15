@@ -151,3 +151,18 @@ def test_master_profile_ignores_stale_transaction_analytics(tmp_path):
         assert con.execute(
             "SELECT COUNT(*) FROM data_products.customer_master_profile WHERE monthly_spend <> 0"
         ).fetchone()[0] == 0
+
+
+def test_master_profile_uses_shared_run_date(tmp_path, monkeypatch):
+    path = tmp_path / "rundate.db"
+    monkeypatch.setenv(run_demo.RUN_DATE_ENV, "2026-01-31")
+    run_demo.run_pipeline(path, n_customers=200, seed=4)
+    with run_demo.connect(path) as con:
+        dates = {r[0].isoformat() for r in con.execute(
+            "SELECT DISTINCT effective_date FROM data_products.transaction_analytics UNION "
+            "SELECT DISTINCT effective_date FROM data_products.customer_master_profile"
+        ).fetchall()}
+        assert dates == {"2026-01-31"}
+        assert con.execute(
+            "SELECT COUNT(*) FROM data_products.customer_master_profile WHERE monthly_spend <> 0"
+        ).fetchone()[0] > 0

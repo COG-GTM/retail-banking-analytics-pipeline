@@ -54,6 +54,19 @@ PRODUCT_TABLES = (
 OPTIONAL_SOURCE_TABLES = frozenset({"core_banking.customer_bureau_scores"})
 
 
+RUN_DATE_ENV = "RETAIL_BANKING_RUN_DATE"
+
+
+def run_date() -> date:
+    """Logical run date stamped on data products (`RETAIL_BANKING_RUN_DATE`, ISO format; default today).
+
+    The Airflow DAG sets it from the run's logical date so every task in a run shares one date,
+    even if the run crosses midnight.
+    """
+    value = os.environ.get(RUN_DATE_ENV)
+    return date.fromisoformat(value) if value else date.today()
+
+
 class PipelineStepError(RuntimeError):
     """Raised when a step fails validation (BTEQ `.EXIT 99` / SAS `%abort cancel`)."""
 
@@ -923,7 +936,7 @@ def customer_segments(con: duckdb.DuckDBPyConnection, seed: int = 42) -> int:
             "upsell_flag": _yn((df.balance_tier == "MODERATE") & (df.tenure_group != "NEW (<1yr)")),
             "retention_risk_flag": _yn((df.acct_ratio < 0.50) & (df.tenure_months >= 60)),
             "model_version": "SEG_V3.2",
-            "effective_date": pd.Timestamp(date.today()),
+            "effective_date": pd.Timestamp(run_date()),
             "load_ts": pd.Timestamp(datetime.now()),
         })
         _validate_frame(out, "CUSTOMER_SEGMENTS", ["customer_id"], ["customer_id", "segment_name", "segment_id"], _min_rows())
@@ -978,9 +991,9 @@ def transaction_analytics(con: duckdb.DuckDBPyConnection) -> int:
         iqr = cust.total_debit_amt.quantile(0.75) - cust.total_debit_amt.quantile(0.25)
         cust["anomaly_flag"] = _yn((cust.total_debit_amt > median + 3 * iqr) & (iqr > 0))
 
-        cust["reporting_period"] = date.today().strftime("%Y-%m")
+        cust["reporting_period"] = run_date().strftime("%Y-%m")
         cust["model_version"] = "TXN_V2.1"
-        cust["effective_date"] = pd.Timestamp(date.today())
+        cust["effective_date"] = pd.Timestamp(run_date())
         cust["load_ts"] = pd.Timestamp(datetime.now())
         _validate_frame(cust, "TRANSACTION_ANALYTICS", ["customer_id"],
                         ["customer_id", "reporting_period", "total_transactions"], _min_rows())
@@ -1073,7 +1086,7 @@ def customer_risk_scores(con: duckdb.DuckDBPyConnection, seed: int = 42) -> int:
         df["watch_list_flag"] = _yn((df.risk_tier == "CRITICAL") & (df.probability_of_default > 0.5))
         df["review_required_flag"] = _yn((df.composite_risk_score >= 60) & (df.velocity_ratio > 2.0))
         df["model_version"] = "RISK_V4.0"
-        df["effective_date"] = pd.Timestamp(date.today())
+        df["effective_date"] = pd.Timestamp(run_date())
         df["load_ts"] = pd.Timestamp(datetime.now())
 
         _validate_frame(df, "CUSTOMER_RISK_SCORES", ["customer_id"],
@@ -1104,7 +1117,7 @@ def customer_master_profile(con: duckdb.DuckDBPyConnection) -> int:
                    net_cash_flow, top_spend_category, digital_txn_pct
             FROM data_products.transaction_analytics
             WHERE effective_date = ?
-        """, [date.today()]).df()
+        """, [run_date()]).df()
         risk = con.execute("""
             SELECT customer_id, composite_risk_score, risk_tier, probability_of_default, watch_list_flag
             FROM data_products.customer_risk_scores
@@ -1132,7 +1145,7 @@ def customer_master_profile(con: duckdb.DuckDBPyConnection) -> int:
         merged.loc[no_risk, "watch_list_flag"] = "N"
 
         merged["model_version"] = "MASTER_V1.5"
-        merged["effective_date"] = pd.Timestamp(date.today())
+        merged["effective_date"] = pd.Timestamp(run_date())
         merged["load_ts"] = pd.Timestamp(datetime.now())
         merged = merged.sort_values("customer_id")
 

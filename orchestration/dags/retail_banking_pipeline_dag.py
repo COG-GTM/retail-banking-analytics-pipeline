@@ -17,6 +17,7 @@ Configuration (environment variables):
   RETAIL_BANKING_DUCKDB_PATH   DuckDB file (default: local/duckdb/airflow_local.db)
   RETAIL_BANKING_N_CUSTOMERS   synthetic customers to generate (default: 5000)
   RETAIL_BANKING_SEED          random seed (default: 42)
+  RETAIL_BANKING_RUN_DATE      set per task from the run's logical date (`ds`); stamps effective_date
 """
 from __future__ import annotations
 
@@ -36,7 +37,10 @@ if str(ENGINE_DIR) not in sys.path:
 def _run_step(step: str, **kwargs) -> dict | int:
     """Open the shared DuckDB file and run one engine step (imported lazily to keep DAG parsing fast)."""
     import run_demo
+    from airflow.operators.python import get_current_context
 
+    # One logical date per DAG run, so effective_date matches across tasks even across midnight.
+    os.environ[run_demo.RUN_DATE_ENV] = get_current_context()["ds"]
     with run_demo.connect() as con:
         return getattr(run_demo, step)(con, **kwargs)
 
