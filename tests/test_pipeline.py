@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import itertools
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -166,3 +167,17 @@ def test_master_profile_uses_shared_run_date(tmp_path, monkeypatch):
         assert con.execute(
             "SELECT COUNT(*) FROM data_products.customer_master_profile WHERE monthly_spend <> 0"
         ).fetchone()[0] > 0
+
+
+def test_historical_run_date_anchors_sources_and_staging(tmp_path, monkeypatch):
+    path = tmp_path / "historical.db"
+    monkeypatch.setenv(run_demo.RUN_DATE_ENV, "2025-01-31")
+    run_demo.run_pipeline(path, n_customers=200, seed=5)
+    with run_demo.connect(path) as con:
+        assert con.execute("SELECT MAX(transaction_date) FROM txn_processing.transactions").fetchone()[0] \
+            <= date(2025, 1, 31)
+        assert con.execute("SELECT MAX(open_date) FROM core_banking.accounts").fetchone()[0] <= date(2025, 1, 31)
+        assert {r[0] for r in con.execute(
+            "SELECT DISTINCT summary_period_end FROM etl_staging.stg_txn_summary").fetchall()} == {date(2025, 1, 31)}
+        assert {r[0] for r in con.execute(
+            "SELECT DISTINCT reporting_period FROM data_products.transaction_analytics").fetchall()} == {"2025-01"}

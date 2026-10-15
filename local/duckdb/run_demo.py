@@ -58,10 +58,11 @@ RUN_DATE_ENV = "RETAIL_BANKING_RUN_DATE"
 
 
 def run_date() -> date:
-    """Logical run date stamped on data products (`RETAIL_BANKING_RUN_DATE`, ISO format; default today).
+    """As-of date for the whole pipeline (`RETAIL_BANKING_RUN_DATE`, ISO format; default today).
 
-    The Airflow DAG sets it from the run's logical date so every task in a run shares one date,
-    even if the run crosses midnight.
+    Anchors synthetic source dates, staging windows (CURRENT_DATE in the BTEQ ports) and product
+    effective dates. The Airflow DAG sets it from the run's logical date so every task in a run
+    shares one date, even across midnight or for historical runs.
     """
     value = os.environ.get(RUN_DATE_ENV)
     return date.fromisoformat(value) if value else date.today()
@@ -283,7 +284,7 @@ def _builtin_populate_sources(con: duckdb.DuckDBPyConnection, n_customers: int =
     rng = np.random.default_rng(seed)
     fake = Faker("en_US")
     Faker.seed(seed)
-    today = np.datetime64(date.today(), "D")
+    today = np.datetime64(run_date(), "D")
     now = pd.Timestamp(datetime.now())
     n = n_customers
 
@@ -450,7 +451,8 @@ def _builtin_populate_sources(con: duckdb.DuckDBPyConnection, n_customers: int =
 
     # ---- transactions: scheduled monthly payments on CREDIT / LOAN accounts ---
     pay_rows = []
-    two_years_ago = date.today() - timedelta(days=730)
+    two_years_ago = run_date() - timedelta(days=730)
+    as_of = run_date()
     for idx in np.flatnonzero(is_crd | is_loan):
         od = pd.Timestamp(open_date[idx]).date()
         last_day = pd.Timestamp(acct_end[idx]).date()
@@ -463,7 +465,7 @@ def _builtin_populate_sources(con: duckdb.DuckDBPyConnection, n_customers: int =
             if mo > 12:
                 y, mo = y + 1, 1
             due = date(y, mo, due_day)
-            if due > last_day:
+            if due > last_day or due > as_of:
                 break
             if due < two_years_ago:
                 continue
@@ -823,11 +825,16 @@ WHERE c.customer_status IN ('A', 'I')
 """
 
 
+def _sql_as_of(sql: str) -> str:
+    """Pin CURRENT_DATE in a ported BTEQ query to the pipeline's run date."""
+    return sql.replace("CURRENT_DATE", f"DATE '{run_date().isoformat()}'")
+
+
 def stg_customer_360(con: duckdb.DuckDBPyConnection) -> int:
     """Port of bteq/01_stg_customer_360.bteq."""
     def run() -> None:
         _recreate(con, "etl_staging.stg_customer_360", STAGING_DDL)
-        con.execute(SQL_STG_CUSTOMER_360)
+        con.execute(_sql_as_of(SQL_STG_CUSTOMER_360))
     return _run_logged(con, "01_stg_customer_360", "etl_staging.stg_customer_360", run)
 
 
@@ -835,17 +842,17 @@ def stg_txn_summary(con: duckdb.DuckDBPyConnection, lookback_months: int = LOOKB
     """Port of bteq/02_stg_txn_summary.bteq."""
     def run() -> None:
         _recreate(con, "etl_staging.stg_txn_summary", STAGING_DDL)
-        con.execute(SQL_STG_TXN_SUMMARY.format(lookback=int(lookback_months)))
+        con.execute(_sql_as_of(SQL_STG_TXN_SUMMARY.format(lookback=int(lookback_months))))
     return _run_logged(con, "02_stg_txn_summary", "etl_staging.stg_txn_summary", run)
 
 
 def stg_risk_factors(con: duckdb.DuckDBPyConnection) -> int:
     """Port of bteq/03_stg_risk_factors.bteq (work tables are dropped afterwards)."""
     def run() -> None:
-        con.execute(SQL_WRK_DAILY_BALANCE)
-        con.execute(SQL_WRK_PAYMENT_HISTORY.format(grace=PAYMENT_GRACE_DAYS))
+        con.execute(_sql_as_of(SQL_WRK_DAILY_BALANCE))
+        con.execute(_sql_as_of(SQL_WRK_PAYMENT_HISTORY.format(grace=PAYMENT_GRACE_DAYS)))
         _recreate(con, "etl_staging.stg_risk_factors", STAGING_DDL)
-        con.execute(SQL_STG_RISK_FACTORS.format(high_risk=", ".join(f"'{c}'" for c in HIGH_RISK_CATEGORIES)))
+        con.execute(_sql_as_of(SQL_STG_RISK_FACTORS.format(high_risk=", ".join(f"'{c}'" for c in HIGH_RISK_CATEGORIES))))
         con.execute("DROP TABLE IF EXISTS etl_staging.wrk_daily_balance")
         con.execute("DROP TABLE IF EXISTS etl_staging.wrk_payment_history")
     return _run_logged(con, "03_stg_risk_factors", "etl_staging.stg_risk_factors", run)
