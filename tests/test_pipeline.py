@@ -116,3 +116,38 @@ def test_dag_structure():
     assert [t.task_id for t in dag.topological_sort()] == expected
     for upstream, downstream in itertools.pairwise(expected):
         assert dag.get_task(downstream).upstream_task_ids == {upstream}
+
+
+def test_no_transactions_after_account_close(db):
+    con, _ = db
+    assert con.execute(
+        "SELECT COUNT(*) FROM txn_processing.transactions t JOIN core_banking.accounts a USING (account_id) "
+        "WHERE a.close_date IS NOT NULL AND t.transaction_date > a.close_date"
+    ).fetchone()[0] == 0
+
+
+def test_failed_generation_keeps_previous_sources(tmp_path):
+    with run_demo.connect(tmp_path / "rollback.db") as con:
+        before = run_demo.generate_source_data(con, n_customers=50, seed=1)
+        with pytest.raises(ValueError):
+            run_demo.generate_source_data(con, n_customers=0)
+        with pytest.raises(RuntimeError):
+            orig = run_demo._builtin_populate_sources
+            run_demo._builtin_populate_sources = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+            try:
+                run_demo.generate_source_data(con, n_customers=50, seed=2)
+            finally:
+                run_demo._builtin_populate_sources = orig
+        after = {t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in run_demo.SOURCE_DDL}
+        assert after == before
+
+
+def test_master_profile_ignores_stale_transaction_analytics(tmp_path):
+    path = tmp_path / "stale.db"
+    run_demo.run_pipeline(path, n_customers=200, seed=3)
+    with run_demo.connect(path) as con:
+        con.execute("UPDATE data_products.transaction_analytics SET effective_date = effective_date - INTERVAL 1 DAY")
+        run_demo.customer_master_profile(con)
+        assert con.execute(
+            "SELECT COUNT(*) FROM data_products.customer_master_profile WHERE monthly_spend <> 0"
+        ).fetchone()[0] == 0

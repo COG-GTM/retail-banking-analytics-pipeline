@@ -51,6 +51,9 @@ PRODUCT_TABLES = (
 )
 
 
+OPTIONAL_SOURCE_TABLES = frozenset({"core_banking.customer_bureau_scores"})
+
+
 class PipelineStepError(RuntimeError):
     """Raised when a step fails validation (BTEQ `.EXIT 99` / SAS `%abort cancel`)."""
 
@@ -310,6 +313,8 @@ def _builtin_populate_sources(con: duckdb.DuckDBPyConnection, n_customers: int =
     acct_status = rng.choice(["O", "C", "F"], m, p=[0.86, 0.08, 0.06])
     acct_status[status[acct_cust_idx] == "C"] = "C"
     close_date = np.where(acct_status == "C", _random_dates(rng, open_date, today), np.datetime64("NaT"))
+    # Last day an account can post activity: its close date if closed, otherwise today.
+    acct_end = np.where(acct_status == "C", close_date, today).astype("datetime64[D]")
     r_acct = risk[acct_cust_idx]
 
     balance = np.zeros(m)
@@ -391,7 +396,7 @@ def _builtin_populate_sources(con: duckdb.DuckDBPyConnection, n_customers: int =
     # Risky customers bounce more cheques
     nsf = (t_type == "FEE") & (rng.random(k) < 0.25 + t_risk)
     t_type[nsf] = "NSF"
-    t_date = _random_dates(rng, np.maximum(open_date[t_acct], year_ago), np.full(k, today))
+    t_date = _random_dates(rng, np.maximum(open_date[t_acct], year_ago), acct_end[t_acct])
 
     amount = np.zeros(k)
     sel = t_type == "PUR"; amount[sel] = -rng.lognormal(3.7, 1.0, sel.sum())
@@ -427,12 +432,15 @@ def _builtin_populate_sources(con: duckdb.DuckDBPyConnection, n_customers: int =
 
     general = pd.DataFrame({"acct_idx": t_acct, "transaction_type_cd": t_type, "transaction_date": t_date,
                             "amount": amount, "merchant_name": merchant, "merchant_category": mcat})
+    # Accounts closed before the lookback window have no window to sample from; drop that activity.
+    general = general[general["transaction_date"].to_numpy() <= acct_end[general["acct_idx"].to_numpy()]]
 
     # ---- transactions: scheduled monthly payments on CREDIT / LOAN accounts ---
     pay_rows = []
     two_years_ago = date.today() - timedelta(days=730)
     for idx in np.flatnonzero(is_crd | is_loan):
         od = pd.Timestamp(open_date[idx]).date()
+        last_day = pd.Timestamp(acct_end[idx]).date()
         due_day = min(od.day, 28)
         p_late = min(0.6, 0.005 + float(r_acct[idx]) ** 2 * 0.8)
         installment = balance[idx] * (0.03 if is_crd[idx] else 0.015) + 25
@@ -442,13 +450,13 @@ def _builtin_populate_sources(con: duckdb.DuckDBPyConnection, n_customers: int =
             if mo > 12:
                 y, mo = y + 1, 1
             due = date(y, mo, due_day)
-            if due > date.today():
+            if due > last_day:
                 break
             if due < two_years_ago:
                 continue
             delay = int(rng.integers(5, 21)) if rng.random() < p_late else int(rng.integers(0, PAYMENT_GRACE_DAYS + 1))
             paid = due + timedelta(days=delay)
-            if paid <= date.today():
+            if paid <= last_day:
                 pay_rows.append((idx, "PMT", np.datetime64(paid, "D"), round(installment * rng.uniform(0.8, 1.2), 2)))
     payments = pd.DataFrame(pay_rows, columns=["acct_idx", "transaction_type_cd", "transaction_date", "amount"])
     payments["merchant_name"] = None
@@ -506,12 +514,24 @@ def _builtin_populate_sources(con: duckdb.DuckDBPyConnection, n_customers: int =
 
 
 def generate_source_data(con: duckdb.DuckDBPyConnection, n_customers: int = 5000, seed: int = 42) -> dict[str, int]:
-    """Phase 1 for the DAG: (re)create source tables and populate them."""
-    create_source_tables(con, replace=True)
-    counts = _builtin_populate_sources(con, n_customers=n_customers, seed=seed)
-    empty = [t for t, c in counts.items() if c == 0]
-    if empty:
-        raise PipelineStepError(f"generate_source_data: empty source tables {empty}")
+    """Phase 1 for the DAG: (re)create source tables and populate them atomically.
+
+    On any failure the previous source snapshot is kept (transaction rollback).
+    """
+    if n_customers < 1:
+        raise ValueError("n_customers must be >= 1")
+    con.execute("BEGIN TRANSACTION")
+    try:
+        create_source_tables(con, replace=True)
+        counts = _builtin_populate_sources(con, n_customers=n_customers, seed=seed)
+        # Bureau reports are optional per customer (risk scoring imputes missing scores).
+        empty = [t for t, c in counts.items() if c == 0 and t not in OPTIONAL_SOURCE_TABLES]
+        if empty:
+            raise PipelineStepError(f"generate_source_data: empty source tables {empty}")
+        con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
     return counts
 
 
@@ -1083,8 +1103,8 @@ def customer_master_profile(con: duckdb.DuckDBPyConnection) -> int:
             SELECT customer_id, total_transactions AS monthly_transactions, total_debit_amt AS monthly_spend,
                    net_cash_flow, top_spend_category, digital_txn_pct
             FROM data_products.transaction_analytics
-            WHERE effective_date = (SELECT MAX(effective_date) FROM data_products.transaction_analytics)
-        """).df()
+            WHERE effective_date = ?
+        """, [date.today()]).df()
         risk = con.execute("""
             SELECT customer_id, composite_risk_score, risk_tier, probability_of_default, watch_list_flag
             FROM data_products.customer_risk_scores
