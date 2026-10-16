@@ -55,8 +55,9 @@ _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SQL_COPT_SS_ACCESS_TOKEN = 1256
 
 logger = logging.getLogger("synapse.pipeline")
-# START times per (job, step, thread), stacked so overlapping same-name steps pair LIFO.
-_step_start_ts: dict[tuple[str, str, int], list[datetime]] = {}
+# Outstanding START times per (job, step) as (thread id, ts). A completion takes the latest START
+# from its own thread, else the oldest outstanding one (completion reported from another thread).
+_step_start_ts: dict[tuple[str, str], list[tuple[int, datetime]]] = {}
 _step_start_lock = threading.Lock()
 
 
@@ -177,13 +178,15 @@ def _swap_dir(tmp_path: str, path: str) -> None:
 def _write_local(df: DataFrame, schema: str, table: str, mode: str,
                  pre_delete_where: str | None) -> None:
     path = _local_output_path(_local_dir(), schema, table)
-    existing = _existing_local_table(df.sparkSession, schema, table, path)
+    plain_overwrite = mode == "overwrite" and pre_delete_where is None
+    # A plain overwrite never needs the old data, so an unreadable old table can still be replaced.
+    existing = None if plain_overwrite else _existing_local_table(df.sparkSession, schema, table, path)
     if existing is not None and pre_delete_where is None:
         if mode in ("error", "errorifexists"):
             raise FileExistsError(f"local table {schema}.{table} already exists")
         if mode == "ignore":
             return
-    if existing is None or (pre_delete_where is None and mode == "overwrite"):
+    if existing is None:
         combined = df
     else:
         # Append / delete+append also carry over rows from a CSV-only source table,
@@ -289,16 +292,18 @@ def log_step(spark, job_name: str, step_name: str, status: str, row_count: int |
     if not job_name or not status:
         raise ValueError("job_name and status are required")
     now = datetime.now(timezone.utc)
-    key = (job_name, step_name, threading.get_ident())
+    key = (job_name, step_name)
+    tid = threading.get_ident()
     with _step_start_lock:
+        starts = _step_start_ts.setdefault(key, [])
         if status.upper() == "START":
-            _step_start_ts.setdefault(key, []).append(now)
+            starts.append((tid, now))
             start_ts = now
         else:
-            starts = _step_start_ts.get(key)
-            start_ts = starts.pop() if starts else now
-            if not starts:
-                _step_start_ts.pop(key, None)
+            own = [i for i, (t, _) in enumerate(starts) if t == tid]
+            start_ts = starts.pop(own[-1] if own else 0)[1] if starts else now
+        if not starts:
+            del _step_start_ts[key]
 
     line = f"[PIPELINE] {now.isoformat(timespec='milliseconds')} | {job_name} | {step_name} | {status}"
     if msg:

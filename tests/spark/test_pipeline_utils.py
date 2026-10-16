@@ -402,7 +402,7 @@ def test_log_step_overlapping_same_step_keeps_own_start(spark, local_dir):
 
     def run(name, hold):
         pu.log_step(spark, "JOB_X", "STEP", "START")
-        starts[name] = pu._step_start_ts[("JOB_X", "STEP", threading.get_ident())][-1]
+        starts[name] = pu._step_start_ts[("JOB_X", "STEP")][-1][1]
         ready.wait()
         time.sleep(hold)
         pu.log_step(spark, "JOB_X", "STEP", "SUCCESS", msg=name)
@@ -418,6 +418,28 @@ def test_log_step_overlapping_same_step_keeps_own_start(spark, local_dir):
     for name in ("a", "b"):
         assert rows[name]["START_TS"].replace(tzinfo=None) == starts[name].replace(tzinfo=None)
     assert not any(k[0] == "JOB_X" for k in pu._step_start_ts)
+
+
+def test_log_step_completion_from_other_thread_uses_start(spark, local_dir):
+    import threading
+
+    th = threading.Thread(target=pu.log_step, args=(spark, "JOB_Y", "LOAD", "START"))
+    th.start()
+    th.join()
+    start = pu._step_start_ts[("JOB_Y", "LOAD")][0][1]
+    pu.log_step(spark, "JOB_Y", "LOAD", "SUCCESS", row_count=3)
+    row = pu.read_table(spark, "stg", "ETL_RUN_LOG").filter("STATUS = 'SUCCESS'").collect()[0]
+    assert row["START_TS"].replace(tzinfo=None) == start.replace(tzinfo=None)
+    assert ("JOB_Y", "LOAD") not in pu._step_start_ts
+
+
+def test_overwrite_replaces_unreadable_local_table(spark, local_dir):
+    broken = local_dir / "dp" / "BROKEN.parquet"
+    broken.mkdir(parents=True)
+    (broken / "part-0.parquet").write_bytes(b"not parquet")
+    df = pu.read_table(spark, "core", "CUSTOMERS")
+    pu.write_table(df, "dp", "BROKEN")
+    assert pu.read_table(spark, "dp", "BROKEN").count() == 500
 
 
 def test_log_step_via_read_table(spark, local_dir):
