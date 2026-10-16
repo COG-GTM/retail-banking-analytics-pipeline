@@ -5,6 +5,7 @@ import math
 import sys
 import types
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
@@ -179,8 +180,8 @@ def test_anomaly_flags(out_pd, ref_df, out_df):
     median = ta.qntldef5_quantile(out_df, "TOTAL_DEBIT_AMT", 0.5)
     q1 = ta.qntldef5_quantile(out_df, "TOTAL_DEBIT_AMT", 0.25)
     q3 = ta.qntldef5_quantile(out_df, "TOTAL_DEBIT_AMT", 0.75)
-    assert abs(median - 8771.25) <= 1e-6
-    assert abs((q3 - q1) - 8051.765) <= 1e-6
+    assert median == Decimal("8771.25")
+    assert q3 - q1 == Decimal("8051.765")
 
 
 def test_spend_percentile(out_pd, ref_df):
@@ -262,10 +263,10 @@ def test_qntldef5_quantile_branches(spark):
     df4 = spark.createDataFrame([(float(i),) for i in [1, 2, 3, 4]], ["v"])
     df5 = spark.createDataFrame([(float(i),) for i in [1, 2, 3, 4, 5]], ["v"])
     empty = spark.createDataFrame([], "v double")
-    assert ta.qntldef5_quantile(df4, "v", 0.5) == 2.5
-    assert ta.qntldef5_quantile(df5, "v", 0.5) == 3
-    assert ta.qntldef5_quantile(df4, "v", 0.25) == 1.5
-    assert ta.qntldef5_quantile(df5, "v", 0.25) == 2
+    assert ta.qntldef5_quantile(df4, "v", 0.5) == Decimal("2.5")
+    assert ta.qntldef5_quantile(df5, "v", 0.5) == Decimal("3")
+    assert ta.qntldef5_quantile(df4, "v", 0.25) == Decimal("1.5")
+    assert ta.qntldef5_quantile(df5, "v", 0.25) == Decimal("2")
     assert ta.qntldef5_quantile(empty, "v", 0.5) is None
 
 
@@ -298,6 +299,29 @@ def test_zero_txn_count_gives_zero_avg_and_digital(spark):
     out = ta.transform(stg, AS_OF).collect()[0]
     assert out["AVG_TRANSACTION_SIZE"] == 0
     assert out["DIGITAL_TXN_PCT"] == 0
+
+
+def test_anomaly_exact_decimal_large_totals(spark):
+    # regression: float quantiles collapsed IQR to 0 at 1e16 totals, hiding
+    # anomalies. Cents must survive exact-Decimal quantile math.
+    base = Decimal("9000000000000000")
+    cents = ["00", "01", "02", "03", "04", "05", "20"]
+    stg = _tiny_stg(
+        spark,
+        [
+            (i + 1, i + 1, 5, 10, f"{base}.{c}", "0", "0", "X", "0", "0")
+            for i, c in enumerate(cents)
+        ],
+    )
+    out = ta.transform(stg, AS_OF).cache()
+    q1 = ta.qntldef5_quantile(out, "TOTAL_DEBIT_AMT", 0.25)
+    q3 = ta.qntldef5_quantile(out, "TOTAL_DEBIT_AMT", 0.75)
+    assert q1 == Decimal("9000000000000000.01")
+    assert q3 == Decimal("9000000000000000.05")
+    assert q3 - q1 == Decimal("0.04")
+    flags = {r["CUSTOMER_ID"]: r["ANOMALY_FLAG"] for r in out.collect()}
+    assert flags[7] == "Y"
+    assert all(v == "N" for k, v in flags.items() if k != 7)
 
 
 def test_anomaly_all_n_when_iqr_zero(spark):

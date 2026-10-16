@@ -102,7 +102,8 @@ def qntldef5_quantile(df: DataFrame, col: str, p):
     If g == 0: (x(j) + x(j+1)) / 2, else x(j+1). Returns None when n == 0.
     `p` may be a float or Fraction; np is computed exactly (Fraction) so
     e.g. 0.25*n carries no float error. Only the needed sorted positions
-    are collected, via a row_number window.
+    are collected, via a row_number window. Returns Decimal (exact) so
+    DECIMAL(18,2) cents survive into downstream IQR/threshold math.
     """
     non_null = df.where(F.col(col).isNotNull())
     n = non_null.count()
@@ -122,11 +123,14 @@ def qntldef5_quantile(df: DataFrame, col: str, p):
         .select("rn", F.col(col).alias("v"))
         .collect()
     }
+    def _dec(v):
+        return v if isinstance(v, Decimal) else Decimal(str(v))
+
     if g == 0:
         xj = rows[j]
         xj1 = rows.get(j + 1, xj)  # j == n only when p >= 1
-        return float(xj + xj1) / 2.0
-    return float(rows[j + 1])
+        return (_dec(xj) + _dec(xj1)) / Decimal(2)
+    return _dec(rows[j + 1])
 
 
 def transform(stg_txn_summary: DataFrame, as_of_date: date, **params) -> DataFrame:
@@ -182,12 +186,18 @@ def transform(stg_txn_summary: DataFrame, as_of_date: date, **params) -> DataFra
     q3 = qntldef5_quantile(ranked, "TOTAL_DEBIT_AMT", Fraction(3, 4))
     iqr = (q3 - q1) if (q1 is not None and q3 is not None) else None
     threshold = (
-        median + ANOMALY_IQR_MULTIPLIER * iqr
+        median + Decimal(ANOMALY_IQR_MULTIPLIER) * iqr
         if (median is not None and iqr is not None and iqr > 0)
         else None
     )
+    # Decimal literal keeps the comparison in exact decimal arithmetic;
+    # DecimalType(38,18) leaves headroom for median+3*IQR of DECIMAL(18,2)
+    # inputs (needs <= (21,3)) without overflow.
     anomaly = (
-        F.when(F.col("TOTAL_DEBIT_AMT") > F.lit(threshold), F.lit("Y")).otherwise(F.lit("N"))
+        F.when(
+            F.col("TOTAL_DEBIT_AMT") > F.lit(threshold).cast(DecimalType(38, 18)),
+            F.lit("Y"),
+        ).otherwise(F.lit("N"))
         if threshold is not None
         else F.lit("N")
     )
