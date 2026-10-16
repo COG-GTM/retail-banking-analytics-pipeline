@@ -353,9 +353,10 @@ class _FakePipelineUtils(types.ModuleType):
     class ValidationError(Exception):
         pass
 
-    def __init__(self, source_df, fail_validation=False):
+    def __init__(self, source_df, fail_validation=False, env="dev"):
         super().__init__("synapse.spark.common.pipeline_utils")
         self.source_df = source_df
+        self.env = env
         self.fail_validation = fail_validation
         self.calls = []
 
@@ -363,7 +364,7 @@ class _FakePipelineUtils(types.ModuleType):
         self.calls.append(("get_run_params", argv))
         return types.SimpleNamespace(
             as_of_date=AS_OF_DATE,
-            env="dev",
+            env=self.env,
             lookback_months=12,
             risk_score_threshold=700,
         )
@@ -442,3 +443,12 @@ def test_main_validation_failure_skips_write(monkeypatch, stg_customer_360, resu
     assert cs.main([]) == 1
     assert not any(c[0] == "write_table" for c in fake.calls)
     assert fake.calls[-1][3] == "FAILED"
+
+
+@pytest.mark.parametrize("env, min_rows", [("dev", 1), ("uat", 1000), ("prod", 1000)])
+def test_main_min_rows_by_env(monkeypatch, stg_customer_360, result_df, env, min_rows):
+    fake = _FakePipelineUtils(stg_customer_360, env=env)
+    _install_fake(monkeypatch, fake)
+    monkeypatch.setattr(cs, "transform", lambda df, as_of_date, **params: result_df)
+    cs.main([])
+    assert [c[3] for c in fake.calls if c[0] == "validate_table"] == [min_rows]

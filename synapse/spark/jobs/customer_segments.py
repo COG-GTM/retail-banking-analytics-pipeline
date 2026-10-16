@@ -61,6 +61,7 @@ SEGMENT_LABELS = [
 KEY_COLS = ["CUSTOMER_ID"]
 NOT_NULL_COLS = ["CUSTOMER_ID", "SEGMENT_NAME", "SEGMENT_ID"]
 SAS_MIN_ROWS = 1000
+SAS_MIN_ROWS_ENVS = ("uat", "prod")
 
 OUTPUT_SCHEMA = StructType(
     [
@@ -293,7 +294,7 @@ def main(argv: list[str] | None = None) -> int:
         pu.log_step(spark, JOB_NAME, STEP_NAME, "FAILED", msg=str(exc)[:4000])
         raise
     try:
-        min_rows = SAS_MIN_ROWS if params.env == "prod" else 1
+        min_rows = SAS_MIN_ROWS if params.env in SAS_MIN_ROWS_ENVS else 1
         pu.validate_table(
             result, key_cols=KEY_COLS, not_null_cols=NOT_NULL_COLS, min_rows=min_rows
         )
