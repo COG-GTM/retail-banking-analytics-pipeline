@@ -44,7 +44,13 @@ ENFORCED_MIN_ROWS_ENVS = ("uat", "prod")
 
 
 def validation_min_rows(env: str) -> int:
-    return VALIDATION_MIN_ROWS_ENFORCED if env in ENFORCED_MIN_ROWS_ENVS else 1
+    # RunParams can be built outside argparse (e.g. pipeline Env parameter),
+    # so normalize case: config documents DEV | UAT | PROD.
+    return (
+        VALIDATION_MIN_ROWS_ENFORCED
+        if env.lower() in ENFORCED_MIN_ROWS_ENVS
+        else 1
+    )
 
 OUTPUT_SCHEMA = StructType(
     [

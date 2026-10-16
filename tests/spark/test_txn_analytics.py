@@ -400,17 +400,22 @@ def test_main_happy_path(spark, stg_df, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "env,expected", [("dev", 1), ("uat", 1000), ("prod", 1000)]
+    "env,expected",
+    [
+        ("dev", 1), ("uat", 1000), ("prod", 1000),
+        ("DEV", 1), ("UAT", 1000), ("PROD", 1000), ("Prod", 1000),
+    ],
 )
 def test_validation_min_rows(env, expected):
     assert ta.validation_min_rows(env) == expected
 
 
-def test_main_prod_enforces_min_rows(spark, stg_df, monkeypatch):
+@pytest.mark.parametrize("env", ["prod", "PROD"])
+def test_main_prod_enforces_min_rows(spark, stg_df, monkeypatch, env):
     calls = {}
-    pu = _fake_pipeline_utils(monkeypatch, stg_df, calls, env="prod")
+    pu = _fake_pipeline_utils(monkeypatch, stg_df, calls, env=env)
     with pytest.raises(pu.ValidationError, match="min_rows 1000"):
-        ta.main(["--as-of-date", "2026-04-10", "--env", "prod"])
+        ta.main(["--as-of-date", "2026-04-10", "--env", env])
     assert calls["validate"][2] == 1000
     assert "write" not in calls
     assert any(c[2] == "FAILED" for c in calls["log"])
