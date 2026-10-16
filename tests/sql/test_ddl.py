@@ -10,7 +10,9 @@ Static checks (no Docker):
 Live checks (SQL Server 2022 in Docker, skipped cleanly if Docker is unavailable):
   * the 4 DDL files apply in order (and re-apply idempotently) through the shim;
   * copy_into_source_tables.sql runs through the shim and loads every CSV with the
-    expected row counts, null counts, numeric totals and date/timestamp ranges.
+    expected row counts, null counts, numeric totals and date/timestamp ranges;
+  * a re-run replaces (not appends); a failed run leaves core.*/txn.* untouched; the
+    script refuses to start without stg.ETL_RUN_LOG.
 
 Run: pytest tests/sql/test_ddl.py
 Env: AZSYN_MSSQL_CONTAINER (default azsyn-mssql-test), AZSYN_MSSQL_PORT (default 14333),
@@ -25,7 +27,8 @@ SQL Server shim (SQL Server lacks Synapse dedicated-pool syntax):
      CLUSTERED INDEX, HEAP -> nothing. PARTITION (c RANGE RIGHT FOR VALUES (...)) ->
      CREATE PARTITION FUNCTION/SCHEME with the same boundaries + ON scheme(c).
   3. CTAS (CREATE TABLE t WITH (...) AS SELECT ...) -> SELECT * INTO t FROM (SELECT ...) s.
-     Not used by these files; kept for parity with the other AZSYN units.
+     Used for the load script's empty load tables: CREATE TABLE stg.LOAD_<T> WITH (...)
+     AS SELECT * FROM <t> WHERE 1 = 0 -> SELECT * INTO stg.LOAD_<T> FROM <t> WHERE 1 = 0.
   4. COPY INTO t (cols) FROM '<adls>/x.csv' WITH (<opts>) -> BULK INSERT t FROM
      '<container path>/x.csv' WITH (<mapped opts>), with @SourceRoot pointed at the CSVs
      copied into the container. Option mapping: FILE_TYPE='CSV' -> FORMAT='CSV',
@@ -45,6 +48,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 from decimal import Decimal
 from pathlib import Path
@@ -263,8 +267,20 @@ def all_synapse_tables() -> dict[str, dict]:
     return tables
 
 
+def parse_load_tables(sql: str) -> dict[str, str]:
+    """{'stg.LOAD_CUSTOMERS': 'core.CUSTOMERS'} from the empty-copy CTAS statements in the load script."""
+    return dict(
+        re.findall(
+            r"CREATE\s+TABLE\s+(stg\.LOAD_\w+)\s+WITH\s*\(DISTRIBUTION\s*=\s*ROUND_ROBIN,\s*HEAP\)\s*"
+            r"AS\s+SELECT\s+\*\s+FROM\s+(\w+\.\w+)\s+WHERE\s+1\s*=\s*0;",
+            sql,
+        )
+    )
+
+
 def parse_copy_into(sql: str) -> dict[str, dict]:
-    """{'core.CUSTOMERS': {'columns': [(name, field_no)], 'file': 'customers.csv'}} from the load script."""
+    """{'core.CUSTOMERS': {'columns': [(name, field_no)], 'file': 'customers.csv', 'load_table': ...}}."""
+    loads = parse_load_tables(sql)
     out = {}
     for m in re.finditer(
         r"COPY\s+INTO\s+(\w+\.\w+)\s*\((.*?)\)\s*FROM\s+'''\s*\+\s*@SourceRoot\s*\+\s*N'/([\w.]+)''", sql, re.DOTALL
@@ -273,7 +289,7 @@ def parse_copy_into(sql: str) -> dict[str, dict]:
         for item in m.group(2).split(","):
             name, num = item.split()
             cols.append((name, int(num)))
-        out[m.group(1)] = {"columns": cols, "file": m.group(3)}
+        out[loads[m.group(1)]] = {"columns": cols, "file": m.group(3), "load_table": m.group(1)}
     return out
 
 
@@ -398,6 +414,13 @@ def shim_copy_script(sql: str, source_root: str) -> list[str]:
     )
     assert n == len(SOURCE_FILES), f"expected {len(SOURCE_FILES)} COPY INTO statements, rewrote {n}"
     sql, n = re.subn(
+        r"CREATE\s+TABLE\s+(stg\.LOAD_\w+)\s+WITH\s*\(DISTRIBUTION\s*=\s*ROUND_ROBIN,\s*HEAP\)\s*AS\s+(SELECT\s+\*)\s+"
+        r"(FROM\s+\w+\.\w+\s+WHERE\s+1\s*=\s*0;)",
+        r"\2 INTO \1 \3",
+        sql,
+    )
+    assert n == len(SOURCE_FILES), f"expected {len(SOURCE_FILES)} load-table CTAS statements, rewrote {n}"
+    sql, n = re.subn(
         r"DECLARE\s+@SourceRoot\s+NVARCHAR\(\d+\)\s*=.*?;",
         f"DECLARE @SourceRoot NVARCHAR(1000) = N'{source_root}';",
         sql,
@@ -478,6 +501,25 @@ def test_copy_into_matches_ddl_and_csv_headers():
         assert raw.isascii(), name  # UTF-8 == Latin1 for VARCHAR columns
 
 
+def test_copy_script_is_all_or_nothing():
+    """Published tables are only changed inside one transaction after every COPY INTO succeeded."""
+    sql = _strip_comments(COPY_SCRIPT.read_text())
+    try_at, begin_tran, commit = sql.index("BEGIN TRY"), sql.index("BEGIN TRANSACTION"), sql.index("COMMIT TRANSACTION")
+    guard = re.search(r"IF\s+OBJECT_ID\(N'stg\.ETL_RUN_LOG',\s*N'U'\)\s+IS\s+NULL\s+THROW", sql)
+    assert guard and guard.start() < try_at, "ETL_RUN_LOG precondition must run before any load"
+    assert "TRUNCATE" not in sql
+    copies = parse_copy_into(sql)
+    assert set(copies) == set(SOURCE_FILES)
+    for fq, spec in copies.items():
+        assert sql.rindex(f"COPY INTO {spec['load_table']}") < begin_tran, fq
+        writes = [m.start() for m in re.finditer(rf"(?:DELETE\s+FROM|INSERT\s+INTO)\s+{re.escape(fq)}\b", sql)]
+        assert len(writes) == 2 and all(begin_tran < w < commit for w in writes), fq
+    catch = sql[sql.index("BEGIN CATCH") :]
+    assert catch.index("ROLLBACK TRANSACTION") < catch.index("INSERT INTO stg.ETL_RUN_LOG")
+    for spec in copies.values():
+        assert f"DROP TABLE {spec['load_table']}" in catch
+
+
 def test_csv_formats_match_load_options():
     """Dates are yyyy-mm-dd and timestamps yyyy-mm-dd hh:mi:ss[.ffffff] in every CSV."""
     tables = all_synapse_tables()
@@ -501,6 +543,7 @@ MSSQL_IMAGE = "mcr.microsoft.com/mssql/server:2022-latest"
 SA_PASSWORD = "AzSyn_Test_2026!"  # throwaway local test container only
 DB_NAME = "azsyn_test"
 CONTAINER_DATA = "/var/opt/mssql/azsyn/01_source_tables"
+CONTAINER_NAME = os.environ.get("AZSYN_MSSQL_CONTAINER", "azsyn-mssql-test")
 
 
 def _docker_ok() -> bool:
@@ -514,7 +557,7 @@ def mssql():
     pymssql = pytest.importorskip("pymssql")
     if not _docker_ok():
         pytest.skip("Docker is not available")
-    name = os.environ.get("AZSYN_MSSQL_CONTAINER", "azsyn-mssql-test")
+    name = CONTAINER_NAME
     port = int(os.environ.get("AZSYN_MSSQL_PORT", "14333"))
     running = subprocess.run(
         ["docker", "ps", "-q", "--filter", f"name=^{name}$"], capture_output=True, text=True, check=False
@@ -743,3 +786,73 @@ def test_as_of_date_and_text_fidelity(loaded):
     )[0]
     # 2025-04 .. 2026-04 -> partitions 65 .. 77 (partition 1 holds < 2020-01-01)
     assert max_part == (65, 77)
+
+
+def _log(conn) -> list[tuple]:
+    return query(
+        conn,
+        "SELECT STEP_NAME, STATUS, ROW_COUNT, MESSAGE FROM stg.ETL_RUN_LOG "
+        "WHERE JOB_NAME = 'copy_into_source_tables' ORDER BY START_TS, STEP_NAME",
+    )
+
+
+def _counts(conn) -> dict[str, int]:
+    return {fq: query(conn, f"SELECT COUNT_BIG(*) FROM {fq}")[0][0] for fq in SOURCE_FILES}
+
+
+def _load_tables(conn) -> list[str]:
+    return [r[0] for r in query(conn, "SELECT name FROM sys.tables WHERE name LIKE 'LOAD[_]%'")]
+
+
+def test_reload_replaces_instead_of_appending(loaded):
+    n_log = len(_log(loaded))
+    run_batches(loaded, shim_copy_script(COPY_SCRIPT.read_text(), CONTAINER_DATA))
+    assert _counts(loaded) == EXPECTED_ROWS
+    assert _load_tables(loaded) == []
+    assert sorted(r[:3] for r in _log(loaded)[n_log:]) == sorted((fq, "SUCCESS", n) for fq, n in EXPECTED_ROWS.items())
+
+
+def test_failed_reload_keeps_published_tables(loaded):
+    """A broken batch (customers.csv cut to 10 rows, accounts.csv missing) must not touch core.*/txn.*."""
+    bad_dir = "/var/opt/mssql/azsyn/bad/01_source_tables"
+    subprocess.run(["docker", "exec", "-u", "0", CONTAINER_NAME, "mkdir", "-p", bad_dir], check=True)
+    with open(CSV_DIR / "customers.csv", newline="") as f:
+        head = "".join(f.readline() for _ in range(11))
+    tmp = Path(tempfile.mkdtemp()) / "customers.csv"
+    tmp.write_text(head, newline="")
+    try:
+        subprocess.run(
+            ["docker", "cp", str(tmp), f"{CONTAINER_NAME}:{bad_dir}/customers.csv"], check=True, capture_output=True
+        )
+    finally:
+        shutil.rmtree(tmp.parent)
+    subprocess.run(
+        ["docker", "exec", "-u", "0", CONTAINER_NAME, "chmod", "-R", "a+rX", "/var/opt/mssql/azsyn"], check=True
+    )
+
+    n_log = len(_log(loaded))
+    with pytest.raises(AssertionError, match="accounts.csv"):
+        run_batches(loaded, shim_copy_script(COPY_SCRIPT.read_text(), bad_dir))
+    assert _counts(loaded) == EXPECTED_ROWS
+    assert _load_tables(loaded) == []
+    new = _log(loaded)[n_log:]
+    assert [r[:3] for r in new] == [("core.ACCOUNTS", "FAILED", None)]
+    assert "accounts.csv" in new[0][3]
+
+
+def test_load_requires_etl_run_log(mssql):
+    """Without stg.ETL_RUN_LOG the script stops before creating or loading anything."""
+    cur = mssql.cursor()
+    cur.execute("CREATE DATABASE azsyn_test_nolog COLLATE SQL_Latin1_General_CP1_CI_AS")
+    try:
+        cur.execute("USE azsyn_test_nolog")
+        for path in SYN_DDL[:2]:
+            run_batches(mssql, shim_ddl(path.read_text()))
+        with pytest.raises(AssertionError, match="ETL_RUN_LOG is missing"):
+            run_batches(mssql, shim_copy_script(COPY_SCRIPT.read_text(), CONTAINER_DATA))
+        assert _counts(mssql) == dict.fromkeys(SOURCE_FILES, 0)
+        assert _load_tables(mssql) == []
+    finally:
+        cur.execute(f"USE {DB_NAME}")
+        cur.execute("ALTER DATABASE azsyn_test_nolog SET SINGLE_USER WITH ROLLBACK IMMEDIATE")
+        cur.execute("DROP DATABASE azsyn_test_nolog")
