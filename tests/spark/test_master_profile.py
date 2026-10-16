@@ -357,6 +357,8 @@ def _synthetic(spark):
              200.0, 100.0, 50.0),
             (6, "Eli", "Fox", 45, "FL", date(2017, 1, 1), 90, "A", 1, 1,
              75.0, 25.0, 10.0),
+            (7, "A" * 60, "B" * 60, 30, "TX", date(2022, 1, 1), 30, "A",
+             1, 1, 10.0, 10.0, 5.0),
         ],
         stg_schema,
     )
@@ -384,6 +386,9 @@ def _synthetic(spark):
             (5, 2, 20.0, 5.0, "GROCERY", 30.0, "2026-04", date(2026, 4, 10)),
             # stale row for cust 6: wrong EFFECTIVE_DATE -> txn defaults
             (6, 9, 99.0, 9.0, "DINING", 90.0, "2026-04", date(2026, 4, 9)),
+            # cust 7: EFFECTIVE_DATE matches, REPORTING_PERIOD doesn't -> still
+            # matched (SAS filters on EFFECTIVE_DATE only)
+            (7, 7, 70.0, 0.0, "OTHER", 10.0, "2026-03", date(2026, 4, 10)),
         ],
         T.StructType([
             T.StructField("CUSTOMER_ID", T.LongType(), True),
@@ -421,7 +426,7 @@ def test_merge_defaults(spark):
         r.CUSTOMER_ID: r
         for r in mp.transform(stg, seg, txn, risk, AS_OF).collect()
     }
-    assert set(rows) == {1, 2, 5, 6}  # cust 3 'I' dropped, cust 4 not in base
+    assert set(rows) == {1, 2, 5, 6, 7}  # cust 3 'I' dropped, cust 4 not in base
 
     r1 = rows[1]
     assert r1.FULL_NAME == "Ann Lee"
@@ -456,6 +461,13 @@ def test_merge_defaults(spark):
     assert r6.MONTHLY_TRANSACTIONS == 0  # stale txn row filtered -> defaults
     assert r6.TOP_SPEND_CATEGORY is None
 
+    r7 = rows[7]
+    assert r7.FULL_NAME == "A" * 60 + " " + "B" * 59  # SAS length=120 cap
+    assert len(r7.FULL_NAME) == 120
+    assert r7.MONTHLY_TRANSACTIONS == 7  # EFFECTIVE_DATE match, period ignored
+    assert r7.SEGMENT_NAME == "UNCLASSIFIED"
+    assert r7.RISK_TIER == "UNKNOWN"
+
 
 def test_quality_report(spark, actual):
     exp = pd.read_csv(DATA / "03_sas_data_products" / "customer_master_profile.csv")
@@ -480,17 +492,24 @@ def test_quality_report(spark, actual):
     syn = mp.transform(stg, seg, txn, risk, AS_OF)
     got_syn = mp.quality_report(syn).collect()[0].asDict()
     # cust 1 has seg+txn+risk, cust 5 has seg(null ltv)+txn+risk watch=Y,
-    # cust 6 seg+risk only, cust 2 none.
+    # cust 6 seg+risk only, cust 7 txn only (period mismatch ignored),
+    # cust 2 none.
     assert got_syn == {
-        "TOTAL": 4,
+        "TOTAL": 5,
         "HAS_SEGMENT": 3,
-        "HAS_TXN": 2,
+        "HAS_TXN": 3,
         "HAS_RISK_SCORE": 3,
         "CROSS_SELL_ELIGIBLE": 1,
         "UPSELL_ELIGIBLE": 0,
         "RETENTION_AT_RISK": 1,
         "ON_WATCH_LIST": 1,
     }
+
+
+@pytest.mark.parametrize("env", ["prod", "uat"])
+def test_min_rows_env(env):
+    assert mp._min_rows(env) == mp.SAS_MIN_ROWS == 1000
+    assert mp._min_rows("dev") == 1
 
 
 def _fake_pu(inputs, log_steps, writes, validates, fail_validate=False):

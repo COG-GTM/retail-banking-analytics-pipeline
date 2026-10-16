@@ -19,8 +19,13 @@ logger = logging.getLogger(__name__)
 JOB_NAME = "04_sas_data_products"
 STEP_NAME = "04_MASTER_PROFILE"
 MODEL_VERSION = "MASTER_V1.5"
-# SAS used min_rows=1000, which the 407-row committed dataset cannot meet.
-MIN_ROWS = 1
+SAS_MIN_ROWS = 1000  # SAS validate_table ran with min_rows=1000
+# The 407-row committed demo dataset only runs in dev, so dev keeps a minimal guard.
+DEV_MIN_ROWS = 1
+
+
+def _min_rows(env: str) -> int:
+    return DEV_MIN_ROWS if env == "dev" else SAS_MIN_ROWS
 
 OUTPUT_SCHEMA = T.StructType(
     [
@@ -59,11 +64,18 @@ OUTPUT_SCHEMA = T.StructType(
 
 
 def _base(stg_customer_360: DataFrame) -> DataFrame:
+    # SAS `length=120` truncates the concatenation at 120 chars.
     full_name = F.rtrim(
-        F.concat(
-            F.rtrim(F.coalesce(F.col("FIRST_NAME"), F.lit(""))),
-            F.lit(" "),
-            F.rtrim(F.coalesce(F.col("LAST_NAME"), F.lit(""))),
+        F.substring(
+            F.rtrim(
+                F.concat(
+                    F.rtrim(F.coalesce(F.col("FIRST_NAME"), F.lit(""))),
+                    F.lit(" "),
+                    F.rtrim(F.coalesce(F.col("LAST_NAME"), F.lit(""))),
+                )
+            ),
+            1,
+            120,
         )
     )
     return (
@@ -107,10 +119,8 @@ def transform(
     )
 
     txn = (
-        transaction_analytics.where(
-            (F.col("EFFECTIVE_DATE") == F.lit(as_of_date))
-            & (F.col("REPORTING_PERIOD") == F.lit(as_of_date.strftime("%Y-%m")))
-        )
+        # SAS filters on EFFECTIVE_DATE = today() only.
+        transaction_analytics.where(F.col("EFFECTIVE_DATE") == F.lit(as_of_date))
         .select(
             "CUSTOMER_ID",
             F.col("TOTAL_TRANSACTIONS").alias("MONTHLY_TRANSACTIONS"),
@@ -284,42 +294,45 @@ def main(argv: "list[str] | None" = None) -> int:
             customer_risk_scores,
             params.as_of_date,
         ).cache()
-        n = df.count()
-        pu.log_step(
-            spark, JOB_NAME, STEP_NAME, "SUCCESS",
-            msg="Master profile built", row_count=n,
-        )
-
-        completeness = quality_report(df).collect()[0].asDict()
-        segments = segment_distribution(df).collect()
-        tiers = risk_tier_distribution(df).collect()
-        logger.info("Completeness check: %s", completeness)
-        logger.info("Segment distribution: %s", [r.asDict() for r in segments])
-        logger.info("Risk tier distribution: %s", [r.asDict() for r in tiers])
-        msg = ", ".join(f"{k}={v}" for k, v in completeness.items())[:4000]
-        pu.log_step(spark, JOB_NAME, STEP_NAME, "SUCCESS", msg=msg)
-
         try:
-            pu.validate_table(
-                df,
-                key_cols=["CUSTOMER_ID"],
-                not_null_cols=["CUSTOMER_ID", "FULL_NAME", "CUSTOMER_STATUS"],
-                min_rows=MIN_ROWS,
-            )
-        except pu.ValidationError as e:
+            n = df.count()
             pu.log_step(
-                spark, JOB_NAME, STEP_NAME, "FAILED",
-                msg=f"Validation failed: {e}"[:4000],
+                spark, JOB_NAME, STEP_NAME, "SUCCESS",
+                msg="Master profile built", row_count=n,
             )
-            return 1
 
-        pu.write_table(df, "dp", "CUSTOMER_MASTER_PROFILE", mode="overwrite")
-        pu.log_step(
-            spark, JOB_NAME, STEP_NAME, "SUCCESS",
-            msg="Golden record loaded", row_count=n,
-        )
-        pu.log_step(spark, JOB_NAME, STEP_NAME, "SUCCESS", msg="Full pipeline complete")
-        return 0
+            completeness = quality_report(df).collect()[0].asDict()
+            segments = segment_distribution(df).collect()
+            tiers = risk_tier_distribution(df).collect()
+            logger.info("Completeness check: %s", completeness)
+            logger.info("Segment distribution: %s", [r.asDict() for r in segments])
+            logger.info("Risk tier distribution: %s", [r.asDict() for r in tiers])
+            msg = ", ".join(f"{k}={v}" for k, v in completeness.items())[:4000]
+            pu.log_step(spark, JOB_NAME, STEP_NAME, "SUCCESS", msg=msg)
+
+            try:
+                pu.validate_table(
+                    df,
+                    key_cols=["CUSTOMER_ID"],
+                    not_null_cols=["CUSTOMER_ID", "FULL_NAME", "CUSTOMER_STATUS"],
+                    min_rows=_min_rows(params.env),
+                )
+            except pu.ValidationError as e:
+                pu.log_step(
+                    spark, JOB_NAME, STEP_NAME, "FAILED",
+                    msg=f"Validation failed: {e}"[:4000],
+                )
+                return 1
+
+            pu.write_table(df, "dp", "CUSTOMER_MASTER_PROFILE", mode="overwrite")
+            pu.log_step(
+                spark, JOB_NAME, STEP_NAME, "SUCCESS",
+                msg="Golden record loaded", row_count=n,
+            )
+            pu.log_step(spark, JOB_NAME, STEP_NAME, "SUCCESS", msg="Full pipeline complete")
+            return 0
+        finally:
+            df.unpersist()
     except Exception as e:
         pu.log_step(spark, JOB_NAME, STEP_NAME, "FAILED", msg=str(e)[:4000])
         raise
