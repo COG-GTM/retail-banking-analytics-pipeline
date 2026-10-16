@@ -20,11 +20,12 @@ BEGIN
 
     SET @AsOfDate = COALESCE(@AsOfDate, CAST(GETUTCDATE() AS DATE));
     SET @LookbackMonths = COALESCE(@LookbackMonths, 12);
-    SET @PeriodStart = DATEADD(MONTH, -@LookbackMonths, @AsOfDate);
-    SET @PeriodEnd = @AsOfDate;
     SET @StartTs = SYSUTCDATETIME();
 
     BEGIN TRY
+        SET @PeriodStart = DATEADD(MONTH, -@LookbackMonths, @AsOfDate);
+        SET @PeriodEnd = @AsOfDate;
+
         IF OBJECT_ID('stg.STG_TXN_SUMMARY') IS NOT NULL
             DROP TABLE stg.STG_TXN_SUMMARY;
 

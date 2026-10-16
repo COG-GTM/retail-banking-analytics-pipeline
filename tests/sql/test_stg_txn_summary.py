@@ -127,6 +127,20 @@ def _prepare_local_container() -> tuple[str, int, str]:
 
     existing = _docker("inspect", CONTAINER_NAME)
     if existing.returncode == 0:
+        port_binding = _docker("port", CONTAINER_NAME, "1433")
+        bindings = {
+            binding.strip() for binding in port_binding.stdout.splitlines()
+        }
+        if port_binding.returncode != 0 or bindings != {"127.0.0.1:14333"}:
+            removed = _docker("rm", "-f", CONTAINER_NAME)
+            if removed.returncode != 0:
+                pytest.skip(
+                    f"Could not recreate {CONTAINER_NAME} with a loopback-only binding: "
+                    f"{removed.stderr.strip()}"
+                )
+            existing = _docker("inspect", CONTAINER_NAME)
+
+    if existing.returncode == 0:
         running = _docker("inspect", "--format", "{{.State.Running}}", CONTAINER_NAME)
         if running.stdout.strip() != "true":
             started = _docker("start", CONTAINER_NAME)
@@ -143,7 +157,7 @@ def _prepare_local_container() -> tuple[str, int, str]:
             "-e",
             f"MSSQL_SA_PASSWORD={password}",
             "-p",
-            "14333:1433",
+            "127.0.0.1:14333:1433",
             image,
         )
         if started.returncode != 0:
@@ -594,6 +608,23 @@ def test_stg_txn_summary_parity_and_runtime_behaviors(summary_run):
     )
     failed_log = cursor.fetchone()
     assert failed_log == ("FAILED", "STG_TXN_SUMMARY loaded 0 rows", 0)
+
+    with pytest.raises(pymssql.Error):
+        cursor.execute(
+            "EXEC stg.usp_load_stg_txn_summary @AsOfDate = '0001-01-01';"
+        )
+    cursor.execute(
+        """
+        SELECT TOP (1) STATUS, MESSAGE
+        FROM stg.ETL_RUN_LOG
+        WHERE JOB_NAME = '02_stg_txn_summary'
+        ORDER BY END_TS DESC
+        """
+    )
+    date_error_log = cursor.fetchone()
+    assert date_error_log is not None
+    assert date_error_log[0] == "FAILED"
+    assert date_error_log[1] is not None
 
     cursor.execute(
         "EXEC stg.usp_load_stg_txn_summary "
