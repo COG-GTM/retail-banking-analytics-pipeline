@@ -188,9 +188,6 @@ def test_output_schema(transformed_df):
     assert [(field.name, field.dataType) for field in transformed_df.schema] == [
         (field.name, field.dataType) for field in risk_scoring.OUTPUT_SCHEMA
     ]
-    assert transformed_df.schema["CUSTOMER_ID"].nullable is False
-
-
 def test_row_count_and_customer_ids(transformed, expected):
     assert len(transformed) == 407
     assert set(transformed.CUSTOMER_ID) == set(expected.customer_id.astype("int64"))

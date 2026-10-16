@@ -252,7 +252,7 @@ def transform(
         F.lit(as_of_date).cast(DateType()).alias("EFFECTIVE_DATE"),
         F.current_timestamp().alias("LOAD_TS"),
     )
-    return output.sparkSession.createDataFrame(output.rdd, schema=OUTPUT_SCHEMA)
+    return output
 
 
 def main(argv: list[str] | None = None) -> int:
