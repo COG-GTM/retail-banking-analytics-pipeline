@@ -58,15 +58,19 @@ OUTPUT_SCHEMA = StructType(
         StructField("LOAD_TS", TimestampType()),
     ]
 )
-MIN_ROWS_BY_ENV = {"prod": 1000}
-# Prod keeps the legacy %validate_table min_rows=1000 guard so truncated staging
-# data cannot overwrite the target; dev/uat use 1 because the 407-row sample
-# cannot meet 1000.
-DEFAULT_MIN_ROWS = 1
+PROD_MIN_ROWS = 1000
+NON_PROD_MIN_ROWS = 1
+NON_PROD_ENVS = frozenset({"dev", "uat"})
+# Prod and unknown/missing envs keep the legacy 1000-row guard (fail closed);
+# only dev/uat use 1 because the 407-row sample cannot meet 1000.
 
 
-def _min_rows(env: str) -> int:
-    return MIN_ROWS_BY_ENV.get(env, DEFAULT_MIN_ROWS)
+def _min_rows(env: str | None) -> int:
+    return (
+        NON_PROD_MIN_ROWS
+        if (env or "").strip().lower() in NON_PROD_ENVS
+        else PROD_MIN_ROWS
+    )
 
 
 def _build_logistic_regression() -> LogisticRegression:

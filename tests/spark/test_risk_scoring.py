@@ -473,7 +473,8 @@ def test_main_logs_failed_and_reraises(monkeypatch):
     assert logs[-1][1]["msg"] == "source table unavailable"
 
 
-def test_main_prod_min_rows_prevents_write(monkeypatch, inputs):
+@pytest.mark.parametrize("env", ["prod", "PROD", " Prod ", "qa"])
+def test_main_prod_min_rows_prevents_write(monkeypatch, inputs, env):
     risk_factors, customer_360 = inputs
     validation_calls, write_calls, logs = [], [], []
 
@@ -503,13 +504,31 @@ def test_main_prod_min_rows_prevents_write(monkeypatch, inputs):
         validate_table,
         write_table,
         log_step,
-        env="prod",
+        env=env,
     )
     with pytest.raises(ValueError, match="table has 407 rows; minimum is 1000"):
         risk_scoring.main([])
     assert validation_calls == [(1000, 407)]
     assert write_calls == []
     assert logs[-1][2] == "FAILED"
+
+
+@pytest.mark.parametrize(
+    "env,expected",
+    [
+        ("dev", 1),
+        ("DEV", 1),
+        ("uat", 1),
+        ("UAT", 1),
+        ("prod", 1000),
+        ("PROD", 1000),
+        ("", 1000),
+        (None, 1000),
+        ("staging", 1000),
+    ],
+)
+def test_min_rows_is_case_insensitive_and_fails_closed(env, expected):
+    assert risk_scoring._min_rows(env) == expected
 
 
 def test_parity_report(transformed, expected, expected_indexed):
