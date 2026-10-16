@@ -2,8 +2,9 @@
 
 The SQL Server shim rewrites Synapse CTAS into SQL Server SELECT INTO while
 preserving the procedure, statistics, and error-handling statements. The local
-container is intentionally left running; remove it with
-``docker rm -f azsyn03-mssql`` when it is no longer needed.
+container binds to 127.0.0.1:14336 by default; override the host port with
+``AZSYN03_MSSQL_PORT``. It is removed at teardown unless
+``AZSYN_KEEP_MSSQL=1``; remove a kept container with ``docker rm -f azsyn03-mssql``.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ pymssql = pytest.importorskip("pymssql", reason="pymssql is required for SQL Ser
 ROOT = Path(__file__).resolve().parents[2]
 DATABASE = "azsyn03_test"
 CONTAINER_NAME = "azsyn03-mssql"
+DEFAULT_CONTAINER_PORT = 14336
 CONTAINER_PASSWORD = "AzSyn03_Test!2026_Password"
 AS_OF_DATE = "2026-04-10"
 PERIOD_START = "2025-04-10"
@@ -105,11 +107,12 @@ def _connection(host: str, port: int, password: str, database: str = "master"):
     )
 
 
-def _prepare_local_container() -> tuple[str, int, str]:
+def _prepare_local_container() -> tuple[str, int, str, bool]:
     host = os.environ.get("MSSQL_HOST")
     password = os.environ.get("MSSQL_SA_PASSWORD", CONTAINER_PASSWORD)
     if host:
-        return host, int(os.environ.get("MSSQL_PORT", "1433")), password
+        return host, int(os.environ.get("MSSQL_PORT", "1433")), password, False
+    port = int(os.environ.get("AZSYN03_MSSQL_PORT", DEFAULT_CONTAINER_PORT))
 
     docker_path = shutil.which("docker")
     if docker_path is None:
@@ -128,10 +131,8 @@ def _prepare_local_container() -> tuple[str, int, str]:
     existing = _docker("inspect", CONTAINER_NAME)
     if existing.returncode == 0:
         port_binding = _docker("port", CONTAINER_NAME, "1433")
-        bindings = {
-            binding.strip() for binding in port_binding.stdout.splitlines()
-        }
-        if port_binding.returncode != 0 or bindings != {"127.0.0.1:14333"}:
+        bindings = {binding.strip() for binding in port_binding.stdout.splitlines()}
+        if port_binding.returncode != 0 or bindings != {f"127.0.0.1:{port}"}:
             removed = _docker("rm", "-f", CONTAINER_NAME)
             if removed.returncode != 0:
                 pytest.skip(
@@ -157,129 +158,145 @@ def _prepare_local_container() -> tuple[str, int, str]:
             "-e",
             f"MSSQL_SA_PASSWORD={password}",
             "-p",
-            "127.0.0.1:14333:1433",
+            f"127.0.0.1:{port}:1433",
             image,
         )
         if started.returncode != 0:
             pytest.skip(f"Could not start SQL Server container: {started.stderr.strip()}")
 
-    return "127.0.0.1", 14333, password
+    return "127.0.0.1", port, password, True
 
 
 @pytest.fixture(scope="session")
 def sqlserver_connection():
-    host, port, password = _prepare_local_container()
-    deadline = time.monotonic() + 120
-    last_error = "SQL Server did not accept a connection"
+    manages_container = False
     connection = None
-    while time.monotonic() < deadline:
-        try:
-            connection = _connection(host, port, password)
-            break
-        except Exception as error:  # driver errors vary during SQL Server startup
-            last_error = str(error)
-            time.sleep(2)
-    if connection is None:
-        pytest.skip(f"SQL Server at {host}:{port} is unreachable: {last_error}")
+    database_connection = None
+    try:
+        host, port, password, manages_container = _prepare_local_container()
+        deadline = time.monotonic() + 120
+        last_error = "SQL Server did not accept a connection"
+        while time.monotonic() < deadline:
+            try:
+                connection = _connection(host, port, password)
+                break
+            except Exception as error:  # driver errors vary during SQL Server startup
+                last_error = str(error)
+                time.sleep(2)
+        if connection is None:
+            pytest.skip(f"SQL Server at {host}:{port} is unreachable: {last_error}")
 
-    cursor = connection.cursor()
-    cursor.execute(
-        f"IF DB_ID('{DATABASE}') IS NOT NULL "
-        f"BEGIN ALTER DATABASE [{DATABASE}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; "
-        f"DROP DATABASE [{DATABASE}]; END; "
-        f"CREATE DATABASE [{DATABASE}];"
-    )
-    connection.close()
-    database_connection = _connection(host, port, password, DATABASE)
-    cursor = database_connection.cursor()
-    for schema_name in ("core", "txn", "stg"):
-        cursor.execute(f"CREATE SCHEMA {schema_name};")
-    cursor.execute(
-        """
-        CREATE TABLE core.ACCOUNTS (
-            ACCOUNT_ID BIGINT NOT NULL,
-            CUSTOMER_ID BIGINT NOT NULL,
-            ACCOUNT_TYPE VARCHAR(20),
-            ACCOUNT_STATUS CHAR(1),
-            OPEN_DATE DATE,
-            CLOSE_DATE DATE,
-            CURRENT_BALANCE DECIMAL(15,2),
-            AVAILABLE_BALANCE DECIMAL(15,2),
-            CREDIT_LIMIT DECIMAL(15,2),
-            INTEREST_RATE DECIMAL(5,4),
-            BRANCH_ID INT,
-            CREATED_TS DATETIME2(6),
-            UPDATED_TS DATETIME2(6)
-        );
-        CREATE TABLE txn.TRANSACTIONS (
-            TRANSACTION_ID BIGINT NOT NULL,
-            ACCOUNT_ID BIGINT NOT NULL,
-            TRANSACTION_TYPE_CD VARCHAR(10),
-            TRANSACTION_DATE DATE,
-            TRANSACTION_TS DATETIME2(6),
-            AMOUNT DECIMAL(15,2),
-            RUNNING_BALANCE DECIMAL(15,2),
-            MERCHANT_NAME VARCHAR(100),
-            MERCHANT_CATEGORY VARCHAR(60),
-            CHANNEL_CODE VARCHAR(10),
-            REFERENCE_NUM VARCHAR(40),
-            STATUS_CODE CHAR(1),
-            CREATED_TS DATETIME2(6)
-        );
-        CREATE TABLE txn.TRANSACTION_TYPES (
-            TRANSACTION_TYPE_CD VARCHAR(10) NOT NULL,
-            DESCRIPTION VARCHAR(60),
-            CATEGORY VARCHAR(30),
-            IS_REVENUE CHAR(1) NOT NULL DEFAULT 'N',
-            EFFECTIVE_DATE DATE,
-            EXPIRATION_DATE DATE
-        );
-        CREATE TABLE stg.ETL_RUN_LOG (
-            JOB_NAME VARCHAR(100) NOT NULL,
-            STEP_NAME VARCHAR(100),
-            STATUS VARCHAR(20) NOT NULL,
-            ROW_COUNT BIGINT,
-            START_TS DATETIME2(6),
-            END_TS DATETIME2(6),
-            MESSAGE VARCHAR(4000)
-        );
-        """
-    )
-
-    source_tables = (
-        ("accounts", "core.ACCOUNTS", 1251),
-        ("transactions", "txn.TRANSACTIONS", 80528),
-        ("transaction_types", "txn.TRANSACTION_TYPES", 8),
-    )
-    for file_stem, table_name, expected_count in source_tables:
-        source = pd.read_csv(
-            ROOT / "data" / "01_source_tables" / f"{file_stem}.csv",
-            dtype=str,
-            keep_default_na=False,
+        cursor = connection.cursor()
+        cursor.execute(
+            f"IF DB_ID('{DATABASE}') IS NOT NULL "
+            f"BEGIN ALTER DATABASE [{DATABASE}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; "
+            f"DROP DATABASE [{DATABASE}]; END; "
+            f"CREATE DATABASE [{DATABASE}];"
         )
-        columns = [column.upper() for column in source.columns]
-        values = [
-            tuple(None if value == "" else value for value in row)
-            for row in source.itertuples(index=False, name=None)
-        ]
-        parameter_row = "(" + ", ".join(["%s"] * len(columns)) + ")"
-        batch_size = 150
-        for start in range(0, len(values), batch_size):
-            batch = values[start : start + batch_size]
-            placeholders = ", ".join([parameter_row] * len(batch))
-            parameters = tuple(value for row in batch for value in row)
-            cursor.execute(
-                f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES {placeholders}",
-                parameters,
+        connection.close()
+        connection = None
+        database_connection = _connection(host, port, password, DATABASE)
+        cursor = database_connection.cursor()
+        for schema_name in ("core", "txn", "stg"):
+            cursor.execute(f"CREATE SCHEMA {schema_name};")
+        cursor.execute(
+            """
+            CREATE TABLE core.ACCOUNTS (
+                ACCOUNT_ID BIGINT NOT NULL,
+                CUSTOMER_ID BIGINT NOT NULL,
+                ACCOUNT_TYPE VARCHAR(20),
+                ACCOUNT_STATUS CHAR(1),
+                OPEN_DATE DATE,
+                CLOSE_DATE DATE,
+                CURRENT_BALANCE DECIMAL(15,2),
+                AVAILABLE_BALANCE DECIMAL(15,2),
+                CREDIT_LIMIT DECIMAL(15,2),
+                INTEREST_RATE DECIMAL(5,4),
+                BRANCH_ID INT,
+                CREATED_TS DATETIME2(6),
+                UPDATED_TS DATETIME2(6)
+            );
+            CREATE TABLE txn.TRANSACTIONS (
+                TRANSACTION_ID BIGINT NOT NULL,
+                ACCOUNT_ID BIGINT NOT NULL,
+                TRANSACTION_TYPE_CD VARCHAR(10),
+                TRANSACTION_DATE DATE,
+                TRANSACTION_TS DATETIME2(6),
+                AMOUNT DECIMAL(15,2),
+                RUNNING_BALANCE DECIMAL(15,2),
+                MERCHANT_NAME VARCHAR(100),
+                MERCHANT_CATEGORY VARCHAR(60),
+                CHANNEL_CODE VARCHAR(10),
+                REFERENCE_NUM VARCHAR(40),
+                STATUS_CODE CHAR(1),
+                CREATED_TS DATETIME2(6)
+            );
+            CREATE TABLE txn.TRANSACTION_TYPES (
+                TRANSACTION_TYPE_CD VARCHAR(10) NOT NULL,
+                DESCRIPTION VARCHAR(60),
+                CATEGORY VARCHAR(30),
+                IS_REVENUE CHAR(1) NOT NULL DEFAULT 'N',
+                EFFECTIVE_DATE DATE,
+                EXPIRATION_DATE DATE
+            );
+            CREATE TABLE stg.ETL_RUN_LOG (
+                JOB_NAME VARCHAR(100) NOT NULL,
+                STEP_NAME VARCHAR(100),
+                STATUS VARCHAR(20) NOT NULL,
+                ROW_COUNT BIGINT,
+                START_TS DATETIME2(6),
+                END_TS DATETIME2(6),
+                MESSAGE VARCHAR(4000)
+            );
+            """
+        )
+
+        source_tables = (
+            ("accounts", "core.ACCOUNTS", 1251),
+            ("transactions", "txn.TRANSACTIONS", 80528),
+            ("transaction_types", "txn.TRANSACTION_TYPES", 8),
+        )
+        for file_stem, table_name, expected_count in source_tables:
+            source = pd.read_csv(
+                ROOT / "data" / "01_source_tables" / f"{file_stem}.csv",
+                dtype=str,
+                keep_default_na=False,
             )
-        cursor.execute(f"SELECT COUNT_BIG(*) FROM {table_name}")
-        loaded_count = cursor.fetchone()[0]
-        assert loaded_count == expected_count, (
-            f"{table_name} loaded {loaded_count} rows, expected {expected_count}"
-        )
+            columns = [column.upper() for column in source.columns]
+            values = [
+                tuple(None if value == "" else value for value in row)
+                for row in source.itertuples(index=False, name=None)
+            ]
+            parameter_row = "(" + ", ".join(["%s"] * len(columns)) + ")"
+            batch_size = 150
+            for start in range(0, len(values), batch_size):
+                batch = values[start : start + batch_size]
+                placeholders = ", ".join([parameter_row] * len(batch))
+                parameters = tuple(value for row in batch for value in row)
+                cursor.execute(
+                    f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES {placeholders}",
+                    parameters,
+                )
+            cursor.execute(f"SELECT COUNT_BIG(*) FROM {table_name}")
+            loaded_count = cursor.fetchone()[0]
+            assert loaded_count == expected_count, (
+                f"{table_name} loaded {loaded_count} rows, expected {expected_count}"
+            )
 
-    yield database_connection
-    database_connection.close()
+        yield database_connection
+    finally:
+        try:
+            if database_connection is not None:
+                database_connection.close()
+            if connection is not None:
+                connection.close()
+        finally:
+            if (
+                manages_container
+                and os.environ.get("AZSYN_KEEP_MSSQL") != "1"
+                and shutil.which("docker") is not None
+            ):
+                _docker("rm", "-f", CONTAINER_NAME)
 
 
 @pytest.fixture(scope="module")
