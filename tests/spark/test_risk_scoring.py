@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 from pyspark.ml import feature
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, functions as F
 from pyspark.sql.types import (
     DateType,
     DecimalType,
@@ -298,7 +298,7 @@ def test_non_degenerate_logistic_regression_matches_numpy_mle(spark):
     assert mae <= 1e-4
 
 
-@pytest.mark.parametrize("label,expected_pd", [(0.0, 0.0), (1.0, 1.0)])
+@pytest.mark.parametrize("label,expected_pd", [(0.0, 0.0), (1.0, 0.0)])
 def test_single_class_logistic_regression_is_finite(spark, label, expected_pd):
     names = ["X1", "X2"]
     rows = [(float(index), float(index % 4), label) for index in range(20)]
@@ -322,7 +322,71 @@ def test_single_class_logistic_regression_is_finite(spark, label, expected_pd):
     assert (values == expected_pd).all()
 
 
-def _install_fake_pipeline_utils(monkeypatch, read_table, validate, write, log):
+def test_null_payment_rate_uses_sas_missing_clip(inputs):
+    risk_factors, customer_360 = inputs
+    model_candidates = (
+        risk_factors.join(
+            customer_360.select("CUSTOMER_ID", "TENURE_MONTHS", "CUSTOMER_STATUS"),
+            on="CUSTOMER_ID",
+        )
+        .filter(F.col("CUSTOMER_STATUS") == "A")
+        .filter(
+            F.col("CREDIT_UTIL_RATIO").isNotNull()
+            & F.col("PAYMENT_ONTIME_PCT").isNotNull()
+            & F.col("BALANCE_VOLATILITY").isNotNull()
+            & F.col("ACCOUNT_OVERDRAFT_CNT").isNotNull()
+            & F.col("LARGE_WITHDRAWAL_CNT").isNotNull()
+            & F.col("HIGH_RISK_MERCHANT_CNT").isNotNull()
+            & F.col("TENURE_MONTHS").isNotNull()
+            & (
+                F.col("DEBIT_VELOCITY_30D").isNull()
+                | (F.col("DEBIT_VELOCITY_30D") <= 0)
+                | F.col("DEBIT_VELOCITY_7D").isNotNull()
+            )
+        )
+        .select("CUSTOMER_ID")
+        .limit(2)
+        .collect()
+    )
+    customer_ids = [row.CUSTOMER_ID for row in model_candidates]
+    assert len(customer_ids) == 2
+    missing_rate_id = customer_ids[0]
+    payment_rate_type = risk_factors.schema["PAYMENT_ONTIME_PCT"].dataType
+    tiny_risk_factors = risk_factors.filter(
+        F.col("CUSTOMER_ID").isin(customer_ids)
+    ).withColumn(
+        "PAYMENT_ONTIME_PCT",
+        F.when(
+            F.col("CUSTOMER_ID") == missing_rate_id,
+            F.lit(None).cast(payment_rate_type),
+        ).otherwise(F.col("PAYMENT_ONTIME_PCT")),
+    )
+    tiny_customer_360 = customer_360.filter(
+        F.col("CUSTOMER_ID").isin(customer_ids)
+    )
+
+    result = risk_scoring.transform(
+        tiny_risk_factors, tiny_customer_360, AS_OF
+    ).collect()
+    assert len(result) == 2
+    assert all(row.PROBABILITY_OF_DEFAULT == 0 for row in result)
+    row = next(row for row in result if row.CUSTOMER_ID == missing_rate_id)
+    assert row.BEHAVIOUR_RISK_COMPONENT == 100
+    assert row.PAYMENT_HISTORY_COMPONENT == 100
+    expected_composite = round(
+        float(row.CREDIT_RISK_COMPONENT) * 0.30
+        + float(row.BEHAVIOUR_RISK_COMPONENT) * 0.25
+        + float(row.VELOCITY_RISK_COMPONENT) * 0.15
+        + (100.0 - float(row.BUREAU_SCORE_COMPONENT)) * 0.20
+        + (100.0 - float(row.PAYMENT_HISTORY_COMPONENT)) * 0.10,
+        2,
+    )
+    assert abs(float(row.COMPOSITE_RISK_SCORE) - expected_composite) <= 0.01
+
+
+def _install_fake_pipeline_utils(
+    monkeypatch, read_table, validate, write, log, env="dev"
+):
     for name in ("synapse", "synapse.spark", "synapse.spark.common"):
         package = sys.modules.get(name)
         if package is None:
@@ -332,7 +396,7 @@ def _install_fake_pipeline_utils(monkeypatch, read_table, validate, write, log):
     module = types.ModuleType("synapse.spark.common.pipeline_utils")
     module.get_run_params = lambda argv: SimpleNamespace(
         as_of_date=AS_OF,
-        env="dev",
+        env=env,
         risk_score_threshold=700,
         lookback_months=12,
     )
@@ -407,6 +471,45 @@ def test_main_logs_failed_and_reraises(monkeypatch):
         risk_scoring.main([])
     assert logs[-1][0] == "FAILED"
     assert logs[-1][1]["msg"] == "source table unavailable"
+
+
+def test_main_prod_min_rows_prevents_write(monkeypatch, inputs):
+    risk_factors, customer_360 = inputs
+    validation_calls, write_calls, logs = [], [], []
+
+    def read_table(spark, schema, table):
+        return {
+            "STG_RISK_FACTORS": risk_factors,
+            "STG_CUSTOMER_360": customer_360,
+        }[table]
+
+    def validate_table(dataframe, **kwargs):
+        row_count = dataframe.count()
+        validation_calls.append((kwargs["min_rows"], row_count))
+        if row_count < kwargs["min_rows"]:
+            raise ValueError(
+                f"table has {row_count} rows; minimum is {kwargs['min_rows']}"
+            )
+
+    def write_table(*args, **kwargs):
+        write_calls.append((args, kwargs))
+
+    def log_step(spark, job, step, status, **kwargs):
+        logs.append((job, step, status, kwargs))
+
+    _install_fake_pipeline_utils(
+        monkeypatch,
+        read_table,
+        validate_table,
+        write_table,
+        log_step,
+        env="prod",
+    )
+    with pytest.raises(ValueError, match="table has 407 rows; minimum is 1000"):
+        risk_scoring.main([])
+    assert validation_calls == [(1000, 407)]
+    assert write_calls == []
+    assert logs[-1][2] == "FAILED"
 
 
 def test_parity_report(transformed, expected, expected_indexed):

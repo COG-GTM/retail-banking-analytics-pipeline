@@ -58,7 +58,15 @@ OUTPUT_SCHEMA = StructType(
         StructField("LOAD_TS", TimestampType()),
     ]
 )
-MIN_ROWS = 1  # SAS used 1000, which the 407-row sample/non-prod data cannot meet.
+MIN_ROWS_BY_ENV = {"prod": 1000}
+# Prod keeps the legacy %validate_table min_rows=1000 guard so truncated staging
+# data cannot overwrite the target; dev/uat use 1 because the 407-row sample
+# cannot meet 1000.
+DEFAULT_MIN_ROWS = 1
+
+
+def _min_rows(env: str) -> int:
+    return MIN_ROWS_BY_ENV.get(env, DEFAULT_MIN_ROWS)
 
 
 def _build_logistic_regression() -> LogisticRegression:
@@ -81,7 +89,8 @@ def _pd_column(
 ) -> F.Column:
     intercept = float(model.intercept)
     if math.isinf(intercept):
-        return F.lit(1.0 if intercept > 0 else 0.0)
+        # SAS rejects a single response level; missing predictions coalesce to 0.
+        return F.lit(0.0)
 
     logit = F.lit(intercept)
     for index, name in enumerate(feature_cols):
@@ -92,7 +101,7 @@ def _pd_column(
 def _clip_0_100(value: F.Column) -> F.Column:
     return F.greatest(
         F.lit(0.0),
-        F.least(F.lit(100.0), F.coalesce(value, F.lit(0.0))),
+        F.least(F.lit(100.0), F.coalesce(value, F.lit(100.0))),
     )
 
 
@@ -274,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
             output,
             key_cols=["CUSTOMER_ID"],
             not_null_cols=["CUSTOMER_ID", "COMPOSITE_RISK_SCORE", "RISK_TIER"],
-            min_rows=MIN_ROWS,
+            min_rows=_min_rows(params.env),
         )
         pu.write_table(output, TARGET_SCHEMA, TARGET_TABLE, mode="overwrite")
         row_count = output.count()
