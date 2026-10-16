@@ -218,7 +218,7 @@ def transform(stg_txn_summary: DataFrame, as_of_date: date, **params) -> DataFra
     return out
 
 
-def main(argv=None) -> int:
+def main(argv: list[str] | None = None) -> int:
     from pyspark.sql import SparkSession
     from synapse.spark.common import pipeline_utils as pu
 
