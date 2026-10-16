@@ -27,8 +27,8 @@ SQL Server shim (SQL Server lacks Synapse dedicated-pool syntax):
      CLUSTERED INDEX, HEAP -> nothing. PARTITION (c RANGE RIGHT FOR VALUES (...)) ->
      CREATE PARTITION FUNCTION/SCHEME with the same boundaries + ON scheme(c).
   3. CTAS (CREATE TABLE t WITH (...) AS SELECT ...) -> SELECT * INTO t FROM (SELECT ...) s.
-     Used for the load script's empty load tables: CREATE TABLE stg.LOAD_<T> WITH (...)
-     AS SELECT * FROM <t> WHERE 1 = 0 -> SELECT * INTO stg.LOAD_<T> FROM <t> WHERE 1 = 0.
+     Used for the load script's per-run empty load tables: CREATE TABLE stg.LOAD_<T>_<RunId>
+     WITH (...) AS SELECT * FROM <t> WHERE 1 = 0 -> SELECT * INTO stg.LOAD_<T>_<RunId> FROM <t> WHERE 1 = 0.
   4. COPY INTO t (cols) FROM '<adls>/x.csv' WITH (<opts>) -> BULK INSERT t FROM
      '<container path>/x.csv' WITH (<mapped opts>), with @SourceRoot pointed at the CSVs
      copied into the container. Option mapping: FILE_TYPE='CSV' -> FORMAT='CSV',
@@ -268,10 +268,10 @@ def all_synapse_tables() -> dict[str, dict]:
 
 
 def parse_load_tables(sql: str) -> dict[str, str]:
-    """{'stg.LOAD_CUSTOMERS': 'core.CUSTOMERS'} from the empty-copy CTAS statements in the load script."""
+    """{'stg.LOAD_CUSTOMERS_': 'core.CUSTOMERS'} (per-run load-table prefix -> target) from the load script."""
     return dict(
         re.findall(
-            r"CREATE\s+TABLE\s+(stg\.LOAD_\w+)\s+WITH\s*\(DISTRIBUTION\s*=\s*ROUND_ROBIN,\s*HEAP\)\s*"
+            r"CREATE\s+TABLE\s+(stg\.LOAD_\w+_)'\s*\+\s*@RunId\s*\+\s*N'\s+WITH\s*\(DISTRIBUTION\s*=\s*ROUND_ROBIN,\s*HEAP\)\s*"
             r"AS\s+SELECT\s+\*\s+FROM\s+(\w+\.\w+)\s+WHERE\s+1\s*=\s*0;",
             sql,
         )
@@ -283,7 +283,9 @@ def parse_copy_into(sql: str) -> dict[str, dict]:
     loads = parse_load_tables(sql)
     out = {}
     for m in re.finditer(
-        r"COPY\s+INTO\s+(\w+\.\w+)\s*\((.*?)\)\s*FROM\s+'''\s*\+\s*@SourceRoot\s*\+\s*N'/([\w.]+)''", sql, re.DOTALL
+        r"COPY\s+INTO\s+(\w+\.\w+_)'\s*\+\s*@RunId\s*\+\s*N'\s*\((.*?)\)\s*FROM\s+'''\s*\+\s*@SourceRoot\s*\+\s*N'/([\w.]+)''",
+        sql,
+        re.DOTALL,
     ):
         cols = []
         for item in m.group(2).split(","):
@@ -407,14 +409,17 @@ def shim_copy_script(sql: str, source_root: str) -> list[str]:
     ]
     bulk_opts = ", ".join(mapping)
     sql, n = re.subn(
-        r"N'COPY\s+INTO\s+(\w+\.\w+)\s*\(.*?\)\s*FROM\s+'''\s*\+\s*@SourceRoot\s*\+\s*N'/([\w.]+)''\s*WITH\s*\('\s*\+\s*@CopyOptions\s*\+\s*N'\);'",
-        lambda m: f"N'BULK INSERT {m.group(1)} FROM ''' + @SourceRoot + N'/{m.group(2)}'' WITH ({bulk_opts});'",
+        r"N'COPY\s+INTO\s+(\w+\.\w+_)'\s*\+\s*@RunId\s*\+\s*N'\s*\(.*?\)\s*FROM\s+'''\s*\+\s*@SourceRoot\s*\+\s*N'/([\w.]+)''\s*WITH\s*\('\s*\+\s*@CopyOptions\s*\+\s*N'\);'",
+        lambda m: (
+            f"N'BULK INSERT {m.group(1)}' + @RunId + N' FROM ''' + @SourceRoot + N'/{m.group(2)}'' WITH ({bulk_opts});'"
+        ),
         sql,
         flags=re.DOTALL,
     )
     assert n == len(SOURCE_FILES), f"expected {len(SOURCE_FILES)} COPY INTO statements, rewrote {n}"
     sql, n = re.subn(
-        r"CREATE\s+TABLE\s+(stg\.LOAD_\w+)\s+WITH\s*\(DISTRIBUTION\s*=\s*ROUND_ROBIN,\s*HEAP\)\s*AS\s+(SELECT\s+\*)\s+"
+        r"CREATE\s+TABLE\s+(stg\.LOAD_\w+_'\s*\+\s*@RunId\s*\+\s*N')\s+WITH\s*\(DISTRIBUTION\s*=\s*ROUND_ROBIN,\s*HEAP\)\s*"
+        r"AS\s+(SELECT\s+\*)\s+"
         r"(FROM\s+\w+\.\w+\s+WHERE\s+1\s*=\s*0;)",
         r"\2 INTO \1 \3",
         sql,
@@ -518,6 +523,16 @@ def test_copy_script_is_all_or_nothing():
     assert catch.index("ROLLBACK TRANSACTION") < catch.index("INSERT INTO stg.ETL_RUN_LOG")
     for spec in copies.values():
         assert f"DROP TABLE {spec['load_table']}" in catch
+    audit = sql.index("SELECT ''copy_into_source_tables'', t.STEP_NAME, ''SUCCESS''")
+    assert begin_tran < audit < commit, "SUCCESS audit rows must commit with the publish"
+    after = sql[sql.index("THROW;\nEND CATCH;", commit) + len("THROW;\nEND CATCH;") :]
+    assert re.fullmatch(r"\s*BEGIN TRY.*END TRY\s*BEGIN CATCH.*END CATCH;\s*", after, re.DOTALL), (
+        "cleanup must be non-fatal"
+    )
+    assert "THROW" not in after
+    refs = re.findall(r"stg\.LOAD_\w+", sql)
+    assert refs and all(r.endswith("_") for r in refs), "load tables must be suffixed with @RunId"
+    assert len(re.findall(r"stg\.LOAD_\w+_' \+ @RunId", sql)) == len(refs)
 
 
 def test_csv_formats_match_load_options():
@@ -805,10 +820,16 @@ def _load_tables(conn) -> list[str]:
 
 
 def test_reload_replaces_instead_of_appending(loaded):
+    """Re-run replaces rows and leaves another (overlapping) run's load tables alone."""
+    run_batches(loaded, ["SELECT TOP 3 * INTO stg.LOAD_CUSTOMERS_otherrun FROM core.CUSTOMERS;"])
     n_log = len(_log(loaded))
-    run_batches(loaded, shim_copy_script(COPY_SCRIPT.read_text(), CONTAINER_DATA))
-    assert _counts(loaded) == EXPECTED_ROWS
-    assert _load_tables(loaded) == []
+    try:
+        run_batches(loaded, shim_copy_script(COPY_SCRIPT.read_text(), CONTAINER_DATA))
+        assert _counts(loaded) == EXPECTED_ROWS
+        assert _load_tables(loaded) == ["LOAD_CUSTOMERS_otherrun"]
+        assert query(loaded, "SELECT COUNT(*) FROM stg.LOAD_CUSTOMERS_otherrun")[0][0] == 3
+    finally:
+        run_batches(loaded, ["DROP TABLE stg.LOAD_CUSTOMERS_otherrun;"])
     assert sorted(r[:3] for r in _log(loaded)[n_log:]) == sorted((fq, "SUCCESS", n) for fq, n in EXPECTED_ROWS.items())
 
 
