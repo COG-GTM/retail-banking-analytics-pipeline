@@ -273,7 +273,7 @@ def risk_tier_distribution(df: DataFrame) -> DataFrame:
 
 
 def main(argv: "list[str] | None" = None) -> int:
-    import synapse.spark.common.pipeline_utils as pu
+    from synapse.spark.common import pipeline_utils as pu
 
     spark = SparkSession.builder.appName("sjd_master_profile").getOrCreate()
     params = pu.get_run_params(argv)

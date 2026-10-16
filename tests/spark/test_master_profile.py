@@ -543,10 +543,15 @@ def _fake_pu(inputs, log_steps, writes, validates, fail_validate=False):
 
 
 def _install_fake_pu(monkeypatch, mod_common, mod_pu):
+    real_common = sys.modules.get("synapse.spark.common")
+    mod_common.pipeline_utils = mod_pu
     monkeypatch.setitem(sys.modules, "synapse.spark.common", mod_common)
-    monkeypatch.setitem(
-        sys.modules, "synapse.spark.common.pipeline_utils", mod_pu
-    )
+    monkeypatch.setitem(sys.modules, "synapse.spark.common.pipeline_utils", mod_pu)
+    spark_pkg = sys.modules.get("synapse.spark")
+    if spark_pkg is not None:
+        monkeypatch.setattr(spark_pkg, "common", mod_common, raising=False)
+    if real_common is not None:
+        monkeypatch.setattr(real_common, "pipeline_utils", mod_pu, raising=False)
 
 
 def test_main(monkeypatch, spark, inputs):
