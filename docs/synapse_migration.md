@@ -83,7 +83,7 @@ From the repository root, create an archive containing only the Python package f
 find synapse -type f -name '*.py' -print | zip synapse.zip -@
 ```
 
-Upload `synapse.zip` to the environment's configured `code_root`. Spark job files must be uploaded under `code_root/synapse/spark/jobs/`; the Spark job definitions currently use the dev storage URL, so override those file paths and the archive URL per environment using the corresponding `pipeline_config.<env>.json`. The `sqlpool_retail` linked service (`AzureSqlDW`, managed identity) must exist before publishing the pipeline. The validation Script activity also requires that linked service. The daily trigger ships in the `Stopped` state; start `tr_daily_0200` after deployment. Pipeline job arguments are configured in the pipeline JSON, and each environment's JSON config is the deployment source for names and storage roots.
+Upload `synapse.zip` to the environment's configured `code_root`. Spark job files must be uploaded under `code_root/synapse/spark/jobs/`; the Spark job definitions currently use the dev storage URL, so override those file paths and the archive URL per environment using the corresponding `pipeline_config.<env>.json`. The `sqlpool_retail` linked service (`AzureSqlDW`, managed identity) must exist before publishing the pipeline. The validation Script activity also requires that linked service. The daily trigger ships in the `Stopped` state; start `tr_daily_0200` after deployment. Pipeline job arguments are configured in the pipeline JSON, and each environment's JSON config is the deployment source for names and storage roots. `tr_daily_0200` ships with `Env` = `prod` and the pipeline's `Env` defaults to `dev`; when deploying to dev/uat, override the trigger's `Env` parameter to the target environment (the same per-environment deployment override as the Spark job definition storage URLs), and pass `Env` explicitly for manual runs in uat/prod.
 
 ## Local testing
 
@@ -101,6 +101,7 @@ pytest tests/spark
 
 - The Script activity requires a linked service named `sqlpool_retail`; no unit owns that linked service.
 - Synapse Spark job definitions run their `.py` file as `__main__`, so modules need `if __name__ == "__main__": sys.exit(main())`.
+- `tr_daily_0200` ships with `Env` = `prod` and the pipeline's `Env` defaults to `dev`; when deploying to dev/uat, override the trigger's `Env` parameter to the target environment (the same per-environment deployment override as the Spark job definition storage URLs), and pass `Env` explicitly for manual runs in uat/prod.
 - The legacy cron timezone is assumed to be UTC.
 - The three staging procedures now run in parallel; this is safe because the three BTEQ scripts read only from `core` and `txn`.
 - Synapse pipelines cannot read the config JSON at runtime, so `LOOKBACK_MONTHS` and `RISK_SCORE_THRESHOLD` are literals in the pipeline and are kept in sync with config by the artifact contract test.

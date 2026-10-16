@@ -365,7 +365,7 @@
         "typeProperties": {
           "scripts": [
             {
-              "type": "NonQuery",
+              "type": "Query",
               "text": "-- Replaces Phase 3 of orchestration/run_full_pipeline.sh.\n-- Expected parity counts at AS_OF_DATE 2026-04-10: CUSTOMER_SEGMENTS 407, TRANSACTION_ANALYTICS 500, CUSTOMER_RISK_SCORES 407, CUSTOMER_MASTER_PROFILE 407.\nSET NOCOUNT ON;\nIF OBJECT_ID('tempdb..#dp_row_counts') IS NOT NULL DROP TABLE #dp_row_counts;\nCREATE TABLE #dp_row_counts (TBL VARCHAR(30) NOT NULL, ROW_COUNT BIGINT NOT NULL) WITH (DISTRIBUTION = ROUND_ROBIN, HEAP);\nINSERT INTO #dp_row_counts (TBL, ROW_COUNT)\nSELECT 'CUSTOMER_SEGMENTS', COUNT_BIG(*) FROM dp.CUSTOMER_SEGMENTS\nUNION ALL SELECT 'TRANSACTION_ANALYTICS', COUNT_BIG(*) FROM dp.TRANSACTION_ANALYTICS\nUNION ALL SELECT 'CUSTOMER_RISK_SCORES', COUNT_BIG(*) FROM dp.CUSTOMER_RISK_SCORES\nUNION ALL SELECT 'CUSTOMER_MASTER_PROFILE', COUNT_BIG(*) FROM dp.CUSTOMER_MASTER_PROFILE;\nSELECT TBL, ROW_COUNT FROM #dp_row_counts ORDER BY TBL;\nDECLARE @empty_tables VARCHAR(400) = (SELECT STRING_AGG(TBL, ', ') FROM #dp_row_counts WHERE ROW_COUNT = 0);\nIF @empty_tables IS NOT NULL\nBEGIN\n    DECLARE @msg NVARCHAR(2048) = CONCAT('Post-run validation failed: 0 rows in dp.', @empty_tables);\n    DROP TABLE #dp_row_counts;\n    THROW 50098, @msg, 1;\nEND;\nDROP TABLE #dp_row_counts;\n"
             }
           ],

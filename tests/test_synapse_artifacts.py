@@ -412,6 +412,7 @@ def test_validation_sql_is_inlined_in_script_activity():
         activity["name"]: activity for activity in get_activities()
     }["Validate_post_run_row_counts"]
     script = validation["typeProperties"]["scripts"][0]
+    assert script["type"] == "Query"
     assert script["text"] == sql_text
     assert validation["userProperties"] == [
         {
