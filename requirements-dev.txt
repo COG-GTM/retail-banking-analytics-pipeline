@@ -1,0 +1,9 @@
+# Local dev/test dependencies for the Synapse Spark jobs and T-SQL proc tests (Python 3.10).
+pyspark==3.4.*
+pytest
+# pyspark 3.4 DataFrame.toPandas() fails on timestamp columns with pandas>=2
+# ("Casting to unit-less dtype 'datetime64'"); pandas 1.5 needs numpy<2.
+pandas<2
+numpy<2
+pyodbc
+pymssql
