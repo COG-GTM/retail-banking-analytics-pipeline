@@ -66,6 +66,7 @@ BEGIN
             INNER JOIN core.ACCOUNTS acct
                 ON t.ACCOUNT_ID = acct.ACCOUNT_ID
             WHERE t.TRANSACTION_DATE >= @Minus3M
+              AND t.TRANSACTION_DATE <= @AsOfDate
               AND t.STATUS_CODE = 'P'
         ) d
         WHERE RN = 1;
@@ -106,8 +107,10 @@ BEGIN
                 pay.CUSTOMER_ID,
                 pay.ACCOUNT_ID,
                 CAST(COUNT(*) AS INT)                                  AS TOTAL_PAYMENTS,
-                CAST(SUM(1 - pay.IS_LATE) AS INT)                      AS ONTIME_PAYMENTS,
-                CAST(SUM(pay.IS_LATE) AS INT)                          AS LATE_PAYMENTS,
+                CAST(SUM(CASE WHEN pay.IS_LATE = 0 THEN 1 ELSE 0 END) AS INT)
+                                                                        AS ONTIME_PAYMENTS,
+                CAST(SUM(CASE WHEN pay.IS_LATE = 1 THEN 1 ELSE 0 END) AS INT)
+                                                                        AS LATE_PAYMENTS,
                 COALESCE(MAX(CASE WHEN pay.IS_LATE = 1 THEN pay.TRANSACTION_DATE END),
                          MAX(pay.OPEN_DATE))                           AS LAST_LATE_OR_OPEN
             FROM (
@@ -117,6 +120,9 @@ BEGIN
                     mb.OPEN_DATE,
                     mb.TRANSACTION_DATE,
                     CASE
+                        WHEN DATEADD(MONTH, CAST(mb.MONTHS_BETWEEN_OPEN AS INT) + 1,
+                                     mb.OPEN_DATE) IS NULL
+                        THEN NULL
                         WHEN mb.TRANSACTION_DATE >
                              DATEADD(MONTH, CAST(mb.MONTHS_BETWEEN_OPEN AS INT) + 1, mb.OPEN_DATE)
                         THEN 1 ELSE 0
@@ -145,6 +151,7 @@ BEGIN
                       AND tt.CATEGORY = 'CREDIT'
                       AND t.STATUS_CODE = 'P'
                       AND t.TRANSACTION_DATE >= @Minus24M
+                      AND t.TRANSACTION_DATE <= @AsOfDate
                 ) mb
             ) pay
             GROUP BY
@@ -205,6 +212,7 @@ BEGIN
             INNER JOIN core.ACCOUNTS acct ON t.ACCOUNT_ID = acct.ACCOUNT_ID
             INNER JOIN txn.TRANSACTION_TYPES tt ON t.TRANSACTION_TYPE_CD = tt.TRANSACTION_TYPE_CD
             WHERE t.TRANSACTION_DATE >= @Minus12M
+              AND t.TRANSACTION_DATE <= @AsOfDate
               AND t.STATUS_CODE = 'P'
             GROUP BY acct.CUSTOMER_ID
         ) overdraft
@@ -222,6 +230,7 @@ BEGIN
             WHERE tt.CATEGORY = 'DEBIT'
               AND ABS(t.AMOUNT) >= 5000
               AND t.TRANSACTION_DATE >= @Minus12M
+              AND t.TRANSACTION_DATE <= @AsOfDate
               AND t.STATUS_CODE = 'P'
             GROUP BY acct.CUSTOMER_ID
         ) lg_wd
@@ -276,6 +285,7 @@ BEGIN
                         PARTITION BY CUSTOMER_ID ORDER BY REPORT_DATE DESC
                     ) AS RN
                 FROM core.CUSTOMER_BUREAU_SCORES
+                WHERE REPORT_DATE <= @AsOfDate
             ) b
             WHERE RN = 1
         ) bureau
@@ -294,6 +304,7 @@ BEGIN
             INNER JOIN txn.TRANSACTION_TYPES tt ON t.TRANSACTION_TYPE_CD = tt.TRANSACTION_TYPE_CD
             WHERE tt.CATEGORY = 'DEBIT'
               AND t.TRANSACTION_DATE >= @Minus30D
+              AND t.TRANSACTION_DATE <= @AsOfDate
               AND t.STATUS_CODE = 'P'
             GROUP BY acct.CUSTOMER_ID
         ) vel
@@ -327,6 +338,7 @@ BEGIN
                 ON  prior.ACCOUNT_ID    = t.ACCOUNT_ID
                 AND prior.MERCHANT_NAME = t.MERCHANT_NAME
             WHERE t.TRANSACTION_DATE >= @Minus6M
+              AND t.TRANSACTION_DATE <= @AsOfDate
               AND t.STATUS_CODE = 'P'
             GROUP BY acct.CUSTOMER_ID
         ) merch

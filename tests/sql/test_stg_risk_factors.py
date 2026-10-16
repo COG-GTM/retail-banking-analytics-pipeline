@@ -43,7 +43,6 @@ EXPECTED_CSV = REPO / "data" / "02_bteq_staging" / "stg_risk_factors.csv"
 AS_OF_DATE = "2026-04-10"
 EXPECTED_ROWS = 478
 TOLERANCE = 0.01
-TEST_DB = "AZSYN04_TEST"
 MSSQL_IMAGE = "mcr.microsoft.com/mssql/server:2022-latest"
 WORK_TABLES = ("stg.WRK_DAILY_BALANCE", "stg.WRK_PAYMENT_HISTORY")
 
@@ -238,26 +237,35 @@ def _load_csv(cur, table: str, csv_path: Path, batch: int = 1000) -> int:
 
 @pytest.fixture(scope="module")
 def conn(server):
+    test_db = f"AZSYN04_TEST_{uuid.uuid4().hex[:8]}"
     master = _connect(**server)
     mcur = master.cursor()
-    mcur.execute(f"IF DB_ID('{TEST_DB}') IS NOT NULL BEGIN "
-                 f"ALTER DATABASE {TEST_DB} SET SINGLE_USER WITH ROLLBACK IMMEDIATE; "
-                 f"DROP DATABASE {TEST_DB}; END")
-    mcur.execute(f"CREATE DATABASE {TEST_DB}")
-    db = _connect(**server, database=TEST_DB)
-    cur = db.cursor()
-    for schema in ("core", "txn", "stg"):
-        cur.execute(f"EXEC('CREATE SCHEMA {schema}')")
-    for table, cols in SOURCE_DDL.items():
-        cur.execute(f"CREATE TABLE {table} ({cols})")
-    for table, fname in SOURCE_CSV.items():
-        _load_csv(cur, table, SOURCE_DIR / fname)
-    cur.execute(synapse_to_sqlserver(PROC_FILE.read_text()))
-    yield db
-    db.close()
-    mcur.execute(f"ALTER DATABASE {TEST_DB} SET SINGLE_USER WITH ROLLBACK IMMEDIATE; "
-                 f"DROP DATABASE {TEST_DB}")
-    master.close()
+    db = None
+    created = False
+    try:
+        mcur.execute(f"CREATE DATABASE {test_db}")
+        created = True
+        db = _connect(**server, database=test_db)
+        cur = db.cursor()
+        for schema in ("core", "txn", "stg"):
+            cur.execute(f"EXEC('CREATE SCHEMA {schema}')")
+        for table, cols in SOURCE_DDL.items():
+            cur.execute(f"CREATE TABLE {table} ({cols})")
+        for table, fname in SOURCE_CSV.items():
+            _load_csv(cur, table, SOURCE_DIR / fname)
+        cur.execute(synapse_to_sqlserver(PROC_FILE.read_text()))
+        yield db
+    finally:
+        try:
+            if db is not None:
+                db.close()
+        finally:
+            try:
+                if created:
+                    mcur.execute(f"ALTER DATABASE {test_db} SET SINGLE_USER WITH ROLLBACK IMMEDIATE; "
+                                 f"DROP DATABASE {test_db}")
+            finally:
+                master.close()
 
 
 def _run_proc(conn, as_of=AS_OF_DATE):
@@ -462,3 +470,114 @@ def test_failure_drops_work_tables_and_logs_failed(conn):
     assert len(log) == 1
     assert log.iloc[0].STATUS == "FAILED"
     assert "loaded 0 rows" in log.iloc[0].MESSAGE
+
+
+def test_null_open_date_counts_neither_ontime_nor_late(conn):
+    account = _query_df(conn, f"""
+        SELECT TOP (1) a.ACCOUNT_ID, a.CUSTOMER_ID, a.OPEN_DATE, COUNT(*) AS PAYMENT_COUNT
+        FROM core.ACCOUNTS a
+        JOIN core.CUSTOMERS c ON c.CUSTOMER_ID = a.CUSTOMER_ID
+        JOIN txn.TRANSACTIONS t ON t.ACCOUNT_ID = a.ACCOUNT_ID
+        JOIN txn.TRANSACTION_TYPES tt ON tt.TRANSACTION_TYPE_CD = t.TRANSACTION_TYPE_CD
+        WHERE c.CUSTOMER_STATUS IN ('A', 'I')
+          AND a.ACCOUNT_TYPE IN ('CREDIT', 'LOAN')
+          AND tt.CATEGORY = 'CREDIT'
+          AND t.STATUS_CODE = 'P'
+          AND t.TRANSACTION_DATE >= DATEADD(MONTH, -24, CAST('{AS_OF_DATE}' AS DATE))
+          AND t.TRANSACTION_DATE <= CAST('{AS_OF_DATE}' AS DATE)
+          AND (SELECT COUNT(*) FROM core.ACCOUNTS a2
+               WHERE a2.CUSTOMER_ID = a.CUSTOMER_ID) = 1
+        GROUP BY a.ACCOUNT_ID, a.CUSTOMER_ID, a.OPEN_DATE
+        ORDER BY COUNT(*) DESC""")
+    assert not account.empty, "expected a single-account customer with qualifying payments"
+    row = account.iloc[0]
+    account_id = int(row["ACCOUNT_ID"])
+    customer_id = int(row["CUSTOMER_ID"])
+    payment_count = int(row["PAYMENT_COUNT"])
+    open_date = row["OPEN_DATE"]
+    cur = conn.cursor()
+
+    try:
+        cur.execute("UPDATE core.ACCOUNTS SET OPEN_DATE = NULL WHERE ACCOUNT_ID = %s",
+                    (account_id,))
+        _run_proc(conn)
+        result = _query_df(
+            conn,
+            f"SELECT PAYMENT_ONTIME_PCT, PAYMENT_LATE_CNT FROM stg.STG_RISK_FACTORS "
+            f"WHERE CUSTOMER_ID = {customer_id}")
+        assert len(result) == 1
+        assert int(result.iloc[0]["PAYMENT_LATE_CNT"]) == 0
+        assert float(result.iloc[0]["PAYMENT_ONTIME_PCT"]) == 0 * 100.0 / payment_count
+    finally:
+        cur.execute("UPDATE core.ACCOUNTS SET OPEN_DATE = %s WHERE ACCOUNT_ID = %s",
+                    (open_date, account_id))
+        _run_proc(conn)
+
+
+def test_rows_after_as_of_date_are_ignored(conn):
+    customer = _query_df(conn, f"""
+        SELECT TOP (1) c.CUSTOMER_ID, MIN(a.ACCOUNT_ID) AS ACCOUNT_ID
+        FROM core.CUSTOMERS c
+        JOIN core.ACCOUNTS a ON a.CUSTOMER_ID = c.CUSTOMER_ID
+        WHERE c.CUSTOMER_STATUS IN ('A', 'I')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM txn.TRANSACTIONS t
+              JOIN core.ACCOUNTS a2 ON a2.ACCOUNT_ID = t.ACCOUNT_ID
+              WHERE a2.CUSTOMER_ID = c.CUSTOMER_ID
+                AND t.TRANSACTION_DATE > CAST('{AS_OF_DATE}' AS DATE))
+          AND NOT EXISTS (
+              SELECT 1 FROM core.CUSTOMER_BUREAU_SCORES b
+              WHERE b.CUSTOMER_ID = c.CUSTOMER_ID
+                AND b.REPORT_DATE > CAST('{AS_OF_DATE}' AS DATE))
+        GROUP BY c.CUSTOMER_ID
+        ORDER BY c.CUSTOMER_ID""")
+    assert not customer.empty, "expected an output customer without existing future-dated rows"
+    customer_id = int(customer.iloc[0]["CUSTOMER_ID"])
+    account_id = int(customer.iloc[0]["ACCOUNT_ID"])
+    expected_rows = pd.read_csv(EXPECTED_CSV)
+    expected = expected_rows.loc[expected_rows.customer_id == customer_id].iloc[0]
+    transaction_id = int(_query_df(
+        conn, "SELECT COALESCE(MAX(TRANSACTION_ID), 0) + 1 AS TRANSACTION_ID "
+              "FROM txn.TRANSACTIONS").iloc[0]["TRANSACTION_ID"])
+    future_date = "2026-04-11"
+    future_score = 999 if int(expected.external_credit_score) != 999 else 998
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            INSERT INTO txn.TRANSACTIONS (
+                TRANSACTION_ID, ACCOUNT_ID, TRANSACTION_TYPE_CD, TRANSACTION_DATE,
+                TRANSACTION_TS, AMOUNT, RUNNING_BALANCE, MERCHANT_NAME, MERCHANT_CATEGORY,
+                CHANNEL_CODE, REFERENCE_NUM, STATUS_CODE, CREATED_TS
+            ) VALUES (%s, %s, 'PUR', %s, %s, 10000.00, 0.00, 'AZSYN04_FUTURE_ONLY',
+                      'OTHER', 'DOMESTIC', 'AZSYN04_FUTURE_ONLY', 'P', %s)""",
+                    (transaction_id, account_id, future_date,
+                     f"{future_date} 12:00:00", f"{future_date} 12:00:00"))
+        cur.execute("""
+            INSERT INTO core.CUSTOMER_BUREAU_SCORES
+                (CUSTOMER_ID, EXTERNAL_CREDIT_SCORE, REPORT_DATE)
+            VALUES (%s, %s, %s)""", (customer_id, future_score, future_date))
+        _run_proc(conn)
+        result = _query_df(conn, f"""
+            SELECT DEBIT_VELOCITY_7D, DEBIT_VELOCITY_30D,
+                   LARGE_WITHDRAWAL_CNT, LARGE_WITHDRAWAL_AMT, EXTERNAL_CREDIT_SCORE
+            FROM stg.STG_RISK_FACTORS
+            WHERE CUSTOMER_ID = {customer_id}""")
+        assert len(result) == 1
+        for column in (
+            "debit_velocity_7d",
+            "debit_velocity_30d",
+            "large_withdrawal_cnt",
+            "large_withdrawal_amt",
+            "external_credit_score",
+        ):
+            assert float(result.iloc[0][column.upper()]) == float(expected[column])
+    finally:
+        cur.execute("DELETE FROM txn.TRANSACTIONS WHERE TRANSACTION_ID = %s",
+                    (transaction_id,))
+        cur.execute("""
+            DELETE FROM core.CUSTOMER_BUREAU_SCORES
+            WHERE CUSTOMER_ID = %s AND EXTERNAL_CREDIT_SCORE = %s AND REPORT_DATE = %s""",
+                    (customer_id, future_score, future_date))
+        _run_proc(conn)
