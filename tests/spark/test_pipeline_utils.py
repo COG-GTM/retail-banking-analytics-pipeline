@@ -433,6 +433,30 @@ def test_log_step_completion_from_other_thread_uses_start(spark, local_dir):
     assert ("JOB_Y", "LOAD") not in pu._step_start_ts
 
 
+def test_log_step_unmatched_completion_keeps_live_threads_start(spark, local_dir):
+    import threading
+
+    started, release = threading.Event(), threading.Event()
+
+    def owner():
+        pu.log_step(spark, "JOB_Z", "LOAD", "START")
+        started.set()
+        release.wait()
+        pu.log_step(spark, "JOB_Z", "LOAD", "SUCCESS", msg="owner")
+
+    th = threading.Thread(target=owner)
+    th.start()
+    started.wait()
+    owner_start = pu._step_start_ts[("JOB_Z", "LOAD")][0][1]
+    pu.log_step(spark, "JOB_Z", "LOAD", "SUCCESS", msg="other")
+    release.set()
+    th.join()
+    rows = {r["MESSAGE"]: r for r in pu.read_table(spark, "stg", "ETL_RUN_LOG")
+            .filter("STATUS = 'SUCCESS'").collect()}
+    assert rows["owner"]["START_TS"].replace(tzinfo=None) == owner_start.replace(tzinfo=None)
+    assert rows["other"]["START_TS"] == rows["other"]["END_TS"]
+
+
 def test_overwrite_replaces_unreadable_local_table(spark, local_dir):
     broken = local_dir / "dp" / "BROKEN.parquet"
     broken.mkdir(parents=True)

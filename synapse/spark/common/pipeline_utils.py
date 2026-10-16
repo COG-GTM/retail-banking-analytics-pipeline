@@ -56,7 +56,7 @@ _SQL_COPT_SS_ACCESS_TOKEN = 1256
 
 logger = logging.getLogger("synapse.pipeline")
 # Outstanding START times per (job, step) as (thread id, ts). A completion takes the latest START
-# from its own thread, else the oldest outstanding one (completion reported from another thread).
+# from its own thread, else the oldest START whose thread has exited, else uses now.
 _step_start_ts: dict[tuple[str, str], list[tuple[int, datetime]]] = {}
 _step_start_lock = threading.Lock()
 
@@ -301,7 +301,13 @@ def log_step(spark, job_name: str, step_name: str, status: str, row_count: int |
             start_ts = now
         else:
             own = [i for i, (t, _) in enumerate(starts) if t == tid]
-            start_ts = starts.pop(own[-1] if own else 0)[1] if starts else now
+            if own:
+                start_ts = starts.pop(own[-1])[1]
+            else:
+                # Only adopt a START whose thread has exited; a live thread may still complete it.
+                alive = {t.ident for t in threading.enumerate()}
+                orphan = next((i for i, (t, _) in enumerate(starts) if t not in alive), None)
+                start_ts = starts.pop(orphan)[1] if orphan is not None else now
         if not starts:
             del _step_start_ts[key]
 
