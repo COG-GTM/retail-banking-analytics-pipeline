@@ -1,0 +1,413 @@
+{
+  "name": "pl_retail_banking_daily",
+  "properties": {
+    "description": "Replaces orchestration/run_full_pipeline.sh with a Synapse-managed retail banking workflow.",
+    "activities": [
+      {
+        "name": "Load_stg_customer_360",
+        "description": "Replaces bteq/01_stg_customer_360.bteq, invoked by bteq/run_bteq_pipeline.sh.",
+        "type": "SqlPoolStoredProcedure",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "userProperties": [],
+        "sqlPool": {
+          "referenceName": "sqlpool_retail",
+          "type": "SqlPoolReference"
+        },
+        "typeProperties": {
+          "storedProcedureName": "[stg].[usp_load_stg_customer_360]",
+          "storedProcedureParameters": {
+            "AsOfDate": {
+              "value": {
+                "value": "@if(empty(pipeline().parameters.AsOfDate), formatDateTime(pipeline().TriggerTime, 'yyyy-MM-dd'), pipeline().parameters.AsOfDate)",
+                "type": "Expression"
+              },
+              "type": "String"
+            }
+          }
+        }
+      },
+      {
+        "name": "Load_stg_txn_summary",
+        "description": "Replaces bteq/02_stg_txn_summary.bteq, invoked by bteq/run_bteq_pipeline.sh.",
+        "type": "SqlPoolStoredProcedure",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "userProperties": [],
+        "sqlPool": {
+          "referenceName": "sqlpool_retail",
+          "type": "SqlPoolReference"
+        },
+        "typeProperties": {
+          "storedProcedureName": "[stg].[usp_load_stg_txn_summary]",
+          "storedProcedureParameters": {
+            "AsOfDate": {
+              "value": {
+                "value": "@if(empty(pipeline().parameters.AsOfDate), formatDateTime(pipeline().TriggerTime, 'yyyy-MM-dd'), pipeline().parameters.AsOfDate)",
+                "type": "Expression"
+              },
+              "type": "String"
+            },
+            "LookbackMonths": {
+              "value": 12,
+              "type": "Int32"
+            }
+          }
+        }
+      },
+      {
+        "name": "Load_stg_risk_factors",
+        "description": "Replaces bteq/03_stg_risk_factors.bteq, invoked by bteq/run_bteq_pipeline.sh.",
+        "type": "SqlPoolStoredProcedure",
+        "dependsOn": [],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "userProperties": [],
+        "sqlPool": {
+          "referenceName": "sqlpool_retail",
+          "type": "SqlPoolReference"
+        },
+        "typeProperties": {
+          "storedProcedureName": "[stg].[usp_load_stg_risk_factors]",
+          "storedProcedureParameters": {
+            "AsOfDate": {
+              "value": {
+                "value": "@if(empty(pipeline().parameters.AsOfDate), formatDateTime(pipeline().TriggerTime, 'yyyy-MM-dd'), pipeline().parameters.AsOfDate)",
+                "type": "Expression"
+              },
+              "type": "String"
+            }
+          }
+        }
+      },
+      {
+        "name": "Run_sjd_customer_segments",
+        "description": "Replaces sas/01_sas_customer_segments.sas, invoked by sas/run_sas_pipeline.sh.",
+        "type": "SparkJob",
+        "dependsOn": [
+          {
+            "activity": "Load_stg_customer_360",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          },
+          {
+            "activity": "Load_stg_txn_summary",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          },
+          {
+            "activity": "Load_stg_risk_factors",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "userProperties": [],
+        "typeProperties": {
+          "sparkJob": {
+            "referenceName": "sjd_customer_segments",
+            "type": "SparkJobDefinitionReference"
+          },
+          "targetBigDataPool": {
+            "referenceName": "sparkpool_retail",
+            "type": "BigDataPoolReference"
+          },
+          "args": [
+            "--as-of-date",
+            {
+              "value": "@if(empty(pipeline().parameters.AsOfDate), formatDateTime(pipeline().TriggerTime, 'yyyy-MM-dd'), pipeline().parameters.AsOfDate)",
+              "type": "Expression"
+            },
+            "--env",
+            {
+              "value": "@pipeline().parameters.Env",
+              "type": "Expression"
+            },
+            "--lookback-months",
+            "12",
+            "--risk-score-threshold",
+            "700"
+          ]
+        }
+      },
+      {
+        "name": "Run_sjd_txn_analytics",
+        "description": "Replaces sas/02_sas_txn_analytics.sas, invoked by sas/run_sas_pipeline.sh.",
+        "type": "SparkJob",
+        "dependsOn": [
+          {
+            "activity": "Load_stg_customer_360",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          },
+          {
+            "activity": "Load_stg_txn_summary",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          },
+          {
+            "activity": "Load_stg_risk_factors",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "userProperties": [],
+        "typeProperties": {
+          "sparkJob": {
+            "referenceName": "sjd_txn_analytics",
+            "type": "SparkJobDefinitionReference"
+          },
+          "targetBigDataPool": {
+            "referenceName": "sparkpool_retail",
+            "type": "BigDataPoolReference"
+          },
+          "args": [
+            "--as-of-date",
+            {
+              "value": "@if(empty(pipeline().parameters.AsOfDate), formatDateTime(pipeline().TriggerTime, 'yyyy-MM-dd'), pipeline().parameters.AsOfDate)",
+              "type": "Expression"
+            },
+            "--env",
+            {
+              "value": "@pipeline().parameters.Env",
+              "type": "Expression"
+            },
+            "--lookback-months",
+            "12",
+            "--risk-score-threshold",
+            "700"
+          ]
+        }
+      },
+      {
+        "name": "Run_sjd_risk_scoring",
+        "description": "Replaces sas/03_sas_risk_scoring.sas, invoked by sas/run_sas_pipeline.sh.",
+        "type": "SparkJob",
+        "dependsOn": [
+          {
+            "activity": "Load_stg_customer_360",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          },
+          {
+            "activity": "Load_stg_txn_summary",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          },
+          {
+            "activity": "Load_stg_risk_factors",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "userProperties": [],
+        "typeProperties": {
+          "sparkJob": {
+            "referenceName": "sjd_risk_scoring",
+            "type": "SparkJobDefinitionReference"
+          },
+          "targetBigDataPool": {
+            "referenceName": "sparkpool_retail",
+            "type": "BigDataPoolReference"
+          },
+          "args": [
+            "--as-of-date",
+            {
+              "value": "@if(empty(pipeline().parameters.AsOfDate), formatDateTime(pipeline().TriggerTime, 'yyyy-MM-dd'), pipeline().parameters.AsOfDate)",
+              "type": "Expression"
+            },
+            "--env",
+            {
+              "value": "@pipeline().parameters.Env",
+              "type": "Expression"
+            },
+            "--lookback-months",
+            "12",
+            "--risk-score-threshold",
+            "700"
+          ]
+        }
+      },
+      {
+        "name": "Run_sjd_master_profile",
+        "description": "Replaces sas/04_sas_data_products.sas, invoked by sas/run_sas_pipeline.sh.",
+        "type": "SparkJob",
+        "dependsOn": [
+          {
+            "activity": "Run_sjd_customer_segments",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          },
+          {
+            "activity": "Run_sjd_txn_analytics",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          },
+          {
+            "activity": "Run_sjd_risk_scoring",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "userProperties": [],
+        "typeProperties": {
+          "sparkJob": {
+            "referenceName": "sjd_master_profile",
+            "type": "SparkJobDefinitionReference"
+          },
+          "targetBigDataPool": {
+            "referenceName": "sparkpool_retail",
+            "type": "BigDataPoolReference"
+          },
+          "args": [
+            "--as-of-date",
+            {
+              "value": "@if(empty(pipeline().parameters.AsOfDate), formatDateTime(pipeline().TriggerTime, 'yyyy-MM-dd'), pipeline().parameters.AsOfDate)",
+              "type": "Expression"
+            },
+            "--env",
+            {
+              "value": "@pipeline().parameters.Env",
+              "type": "Expression"
+            },
+            "--lookback-months",
+            "12",
+            "--risk-score-threshold",
+            "700"
+          ]
+        }
+      },
+      {
+        "name": "Validate_post_run_row_counts",
+        "description": "Replaces Phase 3 validation in orchestration/run_full_pipeline.sh.",
+        "type": "Script",
+        "dependsOn": [
+          {
+            "activity": "Run_sjd_master_profile",
+            "dependencyConditions": [
+              "Succeeded"
+            ]
+          }
+        ],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 0,
+          "retryIntervalInSeconds": 30,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "userProperties": [
+          {
+            "name": "source_file",
+            "value": "synapse/sql/validation/post_run_row_counts.sql"
+          }
+        ],
+        "linkedServiceName": {
+          "referenceName": "sqlpool_retail",
+          "type": "LinkedServiceReference"
+        },
+        "typeProperties": {
+          "scripts": [
+            {
+              "type": "Query",
+              "text": "-- Replaces Phase 3 of orchestration/run_full_pipeline.sh.\n-- Expected parity counts at AS_OF_DATE 2026-04-10: CUSTOMER_SEGMENTS 407, TRANSACTION_ANALYTICS 500, CUSTOMER_RISK_SCORES 407, CUSTOMER_MASTER_PROFILE 407.\nSET NOCOUNT ON;\nIF OBJECT_ID('tempdb..#dp_row_counts') IS NOT NULL DROP TABLE #dp_row_counts;\nCREATE TABLE #dp_row_counts (TBL VARCHAR(30) NOT NULL, ROW_COUNT BIGINT NOT NULL) WITH (DISTRIBUTION = ROUND_ROBIN, HEAP);\nINSERT INTO #dp_row_counts (TBL, ROW_COUNT)\nSELECT 'CUSTOMER_SEGMENTS', COUNT_BIG(*) FROM dp.CUSTOMER_SEGMENTS\nUNION ALL SELECT 'TRANSACTION_ANALYTICS', COUNT_BIG(*) FROM dp.TRANSACTION_ANALYTICS\nUNION ALL SELECT 'CUSTOMER_RISK_SCORES', COUNT_BIG(*) FROM dp.CUSTOMER_RISK_SCORES\nUNION ALL SELECT 'CUSTOMER_MASTER_PROFILE', COUNT_BIG(*) FROM dp.CUSTOMER_MASTER_PROFILE;\nSELECT TBL, ROW_COUNT FROM #dp_row_counts ORDER BY TBL;\nDECLARE @empty_tables VARCHAR(400) = (SELECT STRING_AGG(TBL, ', ') FROM #dp_row_counts WHERE ROW_COUNT = 0);\nIF @empty_tables IS NOT NULL\nBEGIN\n    DECLARE @msg NVARCHAR(2048) = CONCAT('Post-run validation failed: 0 rows in dp.', @empty_tables);\n    DROP TABLE #dp_row_counts;\n    THROW 50098, @msg, 1;\nEND;\nDROP TABLE #dp_row_counts;\n"
+            }
+          ],
+          "scriptBlockExecutionTimeout": "00:30:00"
+        }
+      },
+      {
+        "name": "Fail_pipeline",
+        "description": "Replaces the ABORT and exit branches in orchestration/run_full_pipeline.sh.",
+        "type": "Fail",
+        "dependsOn": [
+          {
+            "activity": "Validate_post_run_row_counts",
+            "dependencyConditions": [
+              "Failed",
+              "Skipped"
+            ]
+          }
+        ],
+        "userProperties": [],
+        "typeProperties": {
+          "message": {
+            "value": "@concat('pl_retail_banking_daily failed (AsOfDate=', if(empty(pipeline().parameters.AsOfDate), formatDateTime(pipeline().TriggerTime, 'yyyy-MM-dd'), pipeline().parameters.AsOfDate), ', Env=', pipeline().parameters.Env, '). See the failed activity in this run.')",
+            "type": "Expression"
+          },
+          "errorCode": "500"
+        }
+      }
+    ],
+    "parameters": {
+      "AsOfDate": {
+        "type": "string",
+        "defaultValue": ""
+      },
+      "Env": {
+        "type": "string",
+        "defaultValue": "dev"
+      }
+    },
+    "folder": {
+      "name": "retail_banking"
+    },
+    "annotations": []
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "sjd_customer_segments",
+  "properties": {
+    "description": "Replaces sas/01_sas_customer_segments.sas.",
+    "targetBigDataPool": {
+      "referenceName": "sparkpool_retail",
+      "type": "BigDataPoolReference"
+    },
+    "requiredSparkVersion": "3.4",
+    "language": "python",
+    "jobProperties": {
+      "name": "sjd_customer_segments",
+      "file": "abfss://code@stretailbankdev.dfs.core.windows.net/retail_banking/synapse/spark/jobs/customer_segments.py",
+      "pyFiles": [
+        "abfss://code@stretailbankdev.dfs.core.windows.net/retail_banking/synapse.zip"
+      ],
+      "args": [],
+      "jars": [],
+      "files": [],
+      "archives": [],
+      "conf": {
+        "spark.dynamicAllocation.enabled": "false"
+      },
+      "driverMemory": "28g",
+      "driverCores": 4,
+      "executorMemory": "28g",
+      "executorCores": 4,
+      "numExecutors": 2
+    }
+  }
+}
