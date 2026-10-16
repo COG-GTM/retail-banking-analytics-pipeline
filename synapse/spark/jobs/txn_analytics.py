@@ -37,7 +37,14 @@ ANOMALY_IQR_MULTIPLIER = 3
 SPEND_PERCENTILE_GROUPS = 100
 VALIDATION_KEY_COLS = ["CUSTOMER_ID"]
 VALIDATION_NOT_NULL_COLS = ["CUSTOMER_ID", "REPORTING_PERIOD", "TOTAL_TRANSACTIONS"]
-VALIDATION_MIN_ROWS = 1000  # faithful to the SAS %validate_table min_rows=1000
+# Legacy SAS ran %validate_table with min_rows=1000; relaxed to 1 outside
+# uat/prod per contract addendum.
+VALIDATION_MIN_ROWS_ENFORCED = 1000
+ENFORCED_MIN_ROWS_ENVS = ("uat", "prod")
+
+
+def validation_min_rows(env: str) -> int:
+    return VALIDATION_MIN_ROWS_ENFORCED if env in ENFORCED_MIN_ROWS_ENVS else 1
 
 OUTPUT_SCHEMA = StructType(
     [
@@ -250,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
             out,
             VALIDATION_KEY_COLS,
             VALIDATION_NOT_NULL_COLS,
-            min_rows=VALIDATION_MIN_ROWS,
+            min_rows=validation_min_rows(params.env),
         )
     except pu.ValidationError as e:
         pu.log_step(spark, JOB_NAME, STEP_NAME, "FAILED", msg=str(e))

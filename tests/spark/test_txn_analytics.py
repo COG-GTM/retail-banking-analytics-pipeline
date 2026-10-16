@@ -339,7 +339,7 @@ def test_anomaly_all_n_when_iqr_zero(spark):
 # ------------------------------- main() tests -------------------------------
 
 
-def _fake_pipeline_utils(monkeypatch, stg_df, calls, validate_raises=False):
+def _fake_pipeline_utils(monkeypatch, stg_df, calls, validate_raises=False, env="dev"):
     pu = types.ModuleType("synapse.spark.common.pipeline_utils")
 
     class ValidationError(Exception):
@@ -348,7 +348,7 @@ def _fake_pipeline_utils(monkeypatch, stg_df, calls, validate_raises=False):
     class RunParams:
         def __init__(self):
             self.as_of_date = AS_OF
-            self.env = "dev"
+            self.env = env
             self.lookback_months = 12
             self.risk_score_threshold = 0.5
 
@@ -363,8 +363,10 @@ def _fake_pipeline_utils(monkeypatch, stg_df, calls, validate_raises=False):
 
     def validate_table(df, key_cols, not_null_cols, min_rows=1):
         calls["validate"] = (key_cols, not_null_cols, min_rows)
-        if validate_raises:
-            raise ValidationError("too few rows")
+        # enforce the row count like the real helper
+        n = df.count()
+        if n < min_rows or validate_raises:
+            raise ValidationError(f"row count {n} < min_rows {min_rows}")
 
     def write_table(df, schema, table, mode="overwrite", pre_delete_where=None):
         calls["write"] = (schema, table, mode, pre_delete_where)
@@ -383,17 +385,35 @@ def _fake_pipeline_utils(monkeypatch, stg_df, calls, validate_raises=False):
 
 def test_main_happy_path(spark, stg_df, monkeypatch):
     calls = {}
-    _fake_pipeline_utils(monkeypatch, stg_df, calls)
+    _fake_pipeline_utils(monkeypatch, stg_df, calls)  # env="dev"
     rc = ta.main(["--as-of-date", "2026-04-10", "--env", "dev"])
     assert rc == 0
     assert calls["write"] == (
         "dp", "TRANSACTION_ANALYTICS", "append", "REPORTING_PERIOD = '2026-04'"
     )
+    # enforcing fake: 500 rows passes in dev because min_rows relaxes to 1
     assert calls["validate"] == (
-        ta.VALIDATION_KEY_COLS, ta.VALIDATION_NOT_NULL_COLS, ta.VALIDATION_MIN_ROWS
+        ta.VALIDATION_KEY_COLS, ta.VALIDATION_NOT_NULL_COLS, 1
     )
     statuses = [c[2] for c in calls["log"]]
     assert statuses[0] == "START" and statuses[-1] == "SUCCESS"
+
+
+@pytest.mark.parametrize(
+    "env,expected", [("dev", 1), ("uat", 1000), ("prod", 1000)]
+)
+def test_validation_min_rows(env, expected):
+    assert ta.validation_min_rows(env) == expected
+
+
+def test_main_prod_enforces_min_rows(spark, stg_df, monkeypatch):
+    calls = {}
+    pu = _fake_pipeline_utils(monkeypatch, stg_df, calls, env="prod")
+    with pytest.raises(pu.ValidationError, match="min_rows 1000"):
+        ta.main(["--as-of-date", "2026-04-10", "--env", "prod"])
+    assert calls["validate"][2] == 1000
+    assert "write" not in calls
+    assert any(c[2] == "FAILED" for c in calls["log"])
 
 
 def test_main_validation_failure(spark, stg_df, monkeypatch):
