@@ -224,6 +224,48 @@ def test_write_with_pre_delete_where_deletes_then_appends(spark, local_dir):
     assert pu.read_table(spark, "dp", "PERIODIC_NEW").count() == 1
 
 
+def test_writes_to_csv_only_table_keep_csv_rows(spark, local_dir):
+    accounts = pu.read_table(spark, "core", "ACCOUNTS")
+    assert accounts.count() == 1251
+    pu.write_table(accounts.limit(1), "core", "ACCOUNTS", mode="append")
+    assert pu.read_table(spark, "core", "ACCOUNTS").count() == 1252
+
+    customers_before = pu.read_table(spark, "core", "CUSTOMERS").count()
+    one = pu.read_table(spark, "core", "CUSTOMERS").filter("CUSTOMER_ID = 1")
+    pu.write_table(one, "core", "CUSTOMERS", pre_delete_where="CUSTOMER_ID = 1")
+    after = pu.read_table(spark, "core", "CUSTOMERS")
+    assert after.count() == customers_before == 500
+    assert after.filter("CUSTOMER_ID = 1").count() == 1
+
+
+def test_error_and_ignore_modes_respect_existing_table(spark, local_dir):
+    df = pu.read_table(spark, "core", "CUSTOMERS")
+    with pytest.raises(FileExistsError):
+        pu.write_table(df, "core", "CUSTOMERS", mode="error")
+    pu.write_table(df.limit(1), "core", "CUSTOMERS", mode="ignore")
+    assert pu.read_table(spark, "core", "CUSTOMERS").count() == 500
+
+
+def test_failed_local_write_keeps_previous_version(spark, local_dir, monkeypatch):
+    df = pu.read_table(spark, "core", "CUSTOMERS")
+    pu.write_table(df, "dp", "SAFE")
+    real_replace = os.replace
+    calls = []
+
+    def flaky_replace(src, dst):
+        calls.append((src, dst))
+        if len(calls) == 2:
+            raise OSError("simulated crash during promotion")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(pu.os, "replace", flaky_replace)
+    with pytest.raises(OSError):
+        pu.write_table(df.limit(5), "dp", "SAFE")
+    monkeypatch.setattr(pu.os, "replace", real_replace)
+    assert pu.read_table(spark, "dp", "SAFE").count() == 500
+    assert sorted(p.name for p in (local_dir / "dp").iterdir()) == ["SAFE.parquet"]
+
+
 @pytest.mark.parametrize("schema,table", [("dp; DROP TABLE x", "T"), ("dp", "T--"), ("dp", "")])
 def test_identifiers_are_validated(spark, local_dir, schema, table):
     with pytest.raises(ValueError):
@@ -349,6 +391,33 @@ def test_log_step_writes_etl_run_log_row(spark, local_dir, caplog):
     text = caplog.text
     assert "01_sas_customer_segments | LOAD | SUCCESS | done | Rows: 407" in text
     assert any(r.levelname == "ERROR" and "VALIDATE" in r.getMessage() for r in caplog.records)
+
+
+def test_log_step_overlapping_same_step_keeps_own_start(spark, local_dir):
+    import threading
+    import time
+
+    ready = threading.Barrier(2)
+    starts = {}
+
+    def run(name, hold):
+        pu.log_step(spark, "JOB_X", "STEP", "START")
+        starts[name] = pu._step_start_ts[("JOB_X", "STEP", threading.get_ident())][-1]
+        ready.wait()
+        time.sleep(hold)
+        pu.log_step(spark, "JOB_X", "STEP", "SUCCESS", msg=name)
+
+    threads = [threading.Thread(target=run, args=(n, h)) for n, h in (("a", 0.0), ("b", 0.5))]
+    threads[0].start()
+    time.sleep(0.2)
+    threads[1].start()
+    for th in threads:
+        th.join()
+    rows = {r["MESSAGE"]: r for r in pu.read_table(spark, "stg", "ETL_RUN_LOG")
+            .filter("STATUS = 'SUCCESS'").collect()}
+    for name in ("a", "b"):
+        assert rows[name]["START_TS"].replace(tzinfo=None) == starts[name].replace(tzinfo=None)
+    assert not any(k[0] == "JOB_X" for k in pu._step_start_ts)
 
 
 def test_log_step_via_read_table(spark, local_dir):

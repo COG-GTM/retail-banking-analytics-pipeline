@@ -22,6 +22,7 @@ import os
 import re
 import shutil
 import struct
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -54,7 +55,9 @@ _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SQL_COPT_SS_ACCESS_TOKEN = 1256
 
 logger = logging.getLogger("synapse.pipeline")
-_step_start_ts: dict[tuple[str, str], datetime] = {}
+# START times per (job, step, thread), stacked so overlapping same-name steps pair LIFO.
+_step_start_ts: dict[tuple[str, str, int], list[datetime]] = {}
+_step_start_lock = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -147,24 +150,55 @@ def _read_local(spark, schema: str, table: str) -> DataFrame:
     return df.toDF(*[c.upper() for c in df.columns])
 
 
+def _existing_local_table(spark, schema: str, table: str, parquet_path: str) -> DataFrame | None:
+    if os.path.exists(parquet_path):
+        return spark.read.parquet(parquet_path)
+    try:
+        return _read_local(spark, schema, table)
+    except FileNotFoundError:
+        return None
+
+
+def _swap_dir(tmp_path: str, path: str) -> None:
+    # Move the old version aside (not delete) so a failed promotion can restore it.
+    backup = f"{path}.old-{uuid.uuid4().hex}" if os.path.exists(path) else None
+    if backup:
+        os.replace(path, backup)
+    try:
+        os.replace(tmp_path, path)
+    except BaseException:
+        if backup:
+            os.replace(backup, path)
+        raise
+    if backup:
+        shutil.rmtree(backup, ignore_errors=True)
+
+
 def _write_local(df: DataFrame, schema: str, table: str, mode: str,
                  pre_delete_where: str | None) -> None:
     path = _local_output_path(_local_dir(), schema, table)
-    exists = os.path.exists(path)
-    if pre_delete_where is None and not (mode == "overwrite" and exists):
-        df.write.mode(mode).parquet(path)
-        return
-    combined = df
-    if pre_delete_where is not None and exists:
-        existing = df.sparkSession.read.parquet(path)
-        kept = existing.filter(~F.coalesce(F.expr(pre_delete_where), F.lit(False)))
-        combined = kept.unionByName(df, allowMissingColumns=True)
-    # Write to a temp path first so a DataFrame derived from the target can overwrite it.
-    tmp_path = f"{path}.tmp-{uuid.uuid4().hex}"
-    combined.write.mode("overwrite").parquet(tmp_path)
-    shutil.rmtree(path, ignore_errors=True)
+    existing = _existing_local_table(df.sparkSession, schema, table, path)
+    if existing is not None and pre_delete_where is None:
+        if mode in ("error", "errorifexists"):
+            raise FileExistsError(f"local table {schema}.{table} already exists")
+        if mode == "ignore":
+            return
+    if existing is None or (pre_delete_where is None and mode == "overwrite"):
+        combined = df
+    else:
+        # Append / delete+append also carry over rows from a CSV-only source table,
+        # because the parquet output shadows the CSV on later reads.
+        if pre_delete_where is not None:
+            existing = existing.filter(~F.coalesce(F.expr(pre_delete_where), F.lit(False)))
+        combined = existing.unionByName(df, allowMissingColumns=True)
+    # Write to a temp path, then swap, so a DataFrame derived from the target can replace it.
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    os.replace(tmp_path, path)
+    tmp_path = f"{path}.tmp-{uuid.uuid4().hex}"
+    try:
+        combined.write.mode("overwrite").parquet(tmp_path)
+        _swap_dir(tmp_path, path)
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
 
 
 def _import_synapse_connector():
@@ -255,12 +289,16 @@ def log_step(spark, job_name: str, step_name: str, status: str, row_count: int |
     if not job_name or not status:
         raise ValueError("job_name and status are required")
     now = datetime.now(timezone.utc)
-    key = (job_name, step_name)
-    if status.upper() == "START":
-        _step_start_ts[key] = now
-        start_ts = now
-    else:
-        start_ts = _step_start_ts.pop(key, now)
+    key = (job_name, step_name, threading.get_ident())
+    with _step_start_lock:
+        if status.upper() == "START":
+            _step_start_ts.setdefault(key, []).append(now)
+            start_ts = now
+        else:
+            starts = _step_start_ts.get(key)
+            start_ts = starts.pop() if starts else now
+            if not starts:
+                _step_start_ts.pop(key, None)
 
     line = f"[PIPELINE] {now.isoformat(timespec='milliseconds')} | {job_name} | {step_name} | {status}"
     if msg:
