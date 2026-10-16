@@ -1,0 +1,61 @@
+{
+  "env": "prod",
+  "replaces": "config/pipeline_config.cfg",
+  "workspace": {
+    "name": "synw-retailbank-prod",
+    "resource_group": "rg-retailbank-prod"
+  },
+  "sql_pool": {
+    "name": "sqlpool_retail",
+    "linked_service": "sqlpool_retail"
+  },
+  "spark_pool": {
+    "name": "sparkpool_retail",
+    "spark_version": "3.4",
+    "python_version": "3.10"
+  },
+  "schemas": {
+    "DB_CORE": "core",
+    "DB_TXN": "txn",
+    "DB_STG": "stg",
+    "DB_DP": "dp"
+  },
+  "run_params": {
+    "LOOKBACK_MONTHS": 12,
+    "RISK_SCORE_THRESHOLD": 700,
+    "LOG_LEVEL": "INFO",
+    "AS_OF_DATE_DEFAULT": "pipeline TriggerTime (UTC) as yyyy-MM-dd"
+  },
+  "adls": {
+    "storage_account": "stretailbankprod",
+    "source_root": "abfss://raw@stretailbankprod.dfs.core.windows.net/retail_banking/01_source_tables/",
+    "code_root": "abfss://code@stretailbankprod.dfs.core.windows.net/retail_banking/",
+    "spark_py_files": "abfss://code@stretailbankprod.dfs.core.windows.net/retail_banking/synapse.zip",
+    "staging_root": "abfss://staging@stretailbankprod.dfs.core.windows.net/retail_banking/tmp/"
+  },
+  "key_vault": {
+    "name": "kv-retailbank-prod",
+    "linked_service": "ls_kv_retailbank"
+  },
+  "orchestration": {
+    "pipeline": "pl_retail_banking_daily",
+    "trigger": "tr_daily_0200",
+    "schedule_utc": "02:00"
+  },
+  "dropped_from_legacy": [
+    "TD_SERVER",
+    "TD_USERNAME",
+    "TD_LOGMECH",
+    "SAS_HOME",
+    "SAS_CONFIG",
+    "SAS_BATCH",
+    "SAS_AUTOEXEC",
+    "PIPELINE_HOME",
+    "BTEQ_DIR",
+    "SAS_DIR",
+    "LOG_DIR",
+    "ARCHIVE_DIR",
+    "RUN_DATE",
+    "RUN_TIMESTAMP"
+  ]
+}

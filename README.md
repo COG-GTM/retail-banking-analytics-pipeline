@@ -148,3 +148,16 @@ This demo was informed by patterns found in these open-source repositories:
 - [sajithkalarikal/process-automation](https://github.com/sajithkalarikal/process-automation) - Real-world BTEQ + shell automation with Teradata
 - [xlfe/dwhwrapper](https://github.com/xlfe/dwhwrapper) - CLI wrapper for Teradata BTEQ
 - [sassoftware/sas-viya-dmml-pipelines](https://github.com/sassoftware/sas-viya-dmml-pipelines) - SAS Viya data mining/ML pipelines
+
+## Azure Synapse migration
+
+The daily retail banking workflow migrates the cron, shell, BTEQ, and SAS pipeline to Azure Synapse orchestration, dedicated SQL pool procedures, and Spark job definitions.
+
+| Legacy | Azure Synapse |
+|---|---|
+| Cron schedule | `tr_daily_0200` |
+| `run_full_pipeline.sh` | `pl_retail_banking_daily` |
+| BTEQ scripts | T-SQL stored procedures |
+| SAS programs | Spark job definitions |
+
+See the [Synapse migration guide](docs/synapse_migration.md) for architecture, deployment, and testing details.
