@@ -115,7 +115,9 @@ def _read_csv(spark, path: Path, schema: StructType):
         .schema(StructType([StructField(f.name, StringType()) for f in schema.fields]))
         .csv(str(path))
     )
-    return raw.select(*[F.col(f.name).cast(f.dataType).alias(f.name) for f in schema.fields])
+    return raw.select(
+        *[F.col(f.name).cast(f.dataType).alias(f.name) for f in schema.fields]
+    )
 
 
 @pytest.fixture(scope="module")
@@ -137,12 +139,19 @@ def spark():
 
 @pytest.fixture(scope="module")
 def stg_customer_360(spark):
-    return _read_csv(spark, REPO_ROOT / "data/02_bteq_staging/stg_customer_360.csv", STG_CUSTOMER_360_SCHEMA)
+    return _read_csv(
+        spark,
+        REPO_ROOT / "data/02_bteq_staging/stg_customer_360.csv",
+        STG_CUSTOMER_360_SCHEMA,
+    )
 
 
 @pytest.fixture(scope="module")
 def staging(stg_customer_360):
-    return {r["CUSTOMER_ID"]: r.asDict() for r in stg_customer_360.where("CUSTOMER_STATUS = 'A'").collect()}
+    return {
+        r["CUSTOMER_ID"]: r.asDict()
+        for r in stg_customer_360.where("CUSTOMER_STATUS = 'A'").collect()
+    }
 
 
 @pytest.fixture(scope="module")
@@ -157,7 +166,11 @@ def actual(result_df):
 
 @pytest.fixture(scope="module")
 def expected(spark):
-    rows = _read_csv(spark, REPO_ROOT / "data/03_sas_data_products/customer_segments.csv", cs.OUTPUT_SCHEMA).collect()
+    rows = _read_csv(
+        spark,
+        REPO_ROOT / "data/03_sas_data_products/customer_segments.csv",
+        cs.OUTPUT_SCHEMA,
+    ).collect()
     return {r["CUSTOMER_ID"]: r.asDict() for r in rows}
 
 
@@ -176,9 +189,13 @@ def test_row_count_and_customer_ids(actual, expected):
 @pytest.mark.parametrize("col", DETERMINISTIC_EXACT)
 def test_deterministic_columns_exact(actual, expected, col):
     mismatches = {
-        cid: (actual[cid][col], expected[cid][col]) for cid in expected if actual[cid][col] != expected[cid][col]
+        cid: (actual[cid][col], expected[cid][col])
+        for cid in expected
+        if actual[cid][col] != expected[cid][col]
     }
-    assert not mismatches, f"{len(mismatches)} mismatches in {col}, e.g. {list(mismatches.items())[:5]}"
+    assert not mismatches, (
+        f"{len(mismatches)} mismatches in {col}, e.g. {list(mismatches.items())[:5]}"
+    )
 
 
 def _bucket_le(value, cuts, labels):
@@ -187,22 +204,38 @@ def _bucket_le(value, cuts, labels):
 
 def test_reference_boundary_defect(actual, expected, staging):
     """Port matches the reference everywhere except rows sitting exactly on a SAS cut point."""
-    on_boundary = {cid for cid, s in staging.items() if s["AGE"] in AGE_CUTS or s["TENURE_MONTHS"] in TENURE_CUTS}
+    on_boundary = {
+        cid
+        for cid, s in staging.items()
+        if s["AGE"] in AGE_CUTS or s["TENURE_MONTHS"] in TENURE_CUTS
+    }
     diffs = Counter()
     for col in BOUNDARY_COLS:
         bad = {cid for cid in expected if actual[cid][col] != expected[cid][col]}
-        assert bad <= on_boundary, f"{col}: unexplained mismatches {sorted(bad - on_boundary)[:10]}"
+        assert bad <= on_boundary, (
+            f"{col}: unexplained mismatches {sorted(bad - on_boundary)[:10]}"
+        )
         diffs[col] = len(bad)
-    print(f"\nboundary-rule diffs vs reference (SAS '<' vs reference '<='): {dict(diffs)}")
+    print(
+        f"\nboundary-rule diffs vs reference (SAS '<' vs reference '<='): {dict(diffs)}"
+    )
 
     for cid, s in staging.items():
         e = expected[cid]
         tenure_le = _bucket_le(
-            s["TENURE_MONTHS"], TENURE_CUTS, ["NEW (<1yr)", "DEVELOPING (1-3yr)", "ESTABLISHED (3-7yr)", "LOYAL (7yr+)"]
+            s["TENURE_MONTHS"],
+            TENURE_CUTS,
+            ["NEW (<1yr)", "DEVELOPING (1-3yr)", "ESTABLISHED (3-7yr)", "LOYAL (7yr+)"],
         )
-        age_le = _bucket_le(s["AGE"], AGE_CUTS, ["GEN_Z", "MILLENNIAL", "GEN_X", "BOOMER", "SILENT"])
+        age_le = _bucket_le(
+            s["AGE"], AGE_CUTS, ["GEN_Z", "MILLENNIAL", "GEN_X", "BOOMER", "SILENT"]
+        )
         assert (tenure_le, age_le) == (e["TENURE_GROUP"], e["AGE_GROUP"]), cid
-        upsell_le = "Y" if actual[cid]["BALANCE_TIER"] == "MODERATE" and tenure_le != "NEW (<1yr)" else "N"
+        upsell_le = (
+            "Y"
+            if actual[cid]["BALANCE_TIER"] == "MODERATE" and tenure_le != "NEW (<1yr)"
+            else "N"
+        )
         assert upsell_le == e["UPSELL_FLAG"], cid
 
 
@@ -215,7 +248,9 @@ def test_deterministic_numeric_within_tolerance(actual, expected, col):
         return abs(float(a) - float(e))
 
     worst = max(expected, key=diff)
-    assert diff(worst) <= NUMERIC_TOL, f"{col}: customer {worst} differs by {diff(worst)}"
+    assert diff(worst) <= NUMERIC_TOL, (
+        f"{col}: customer {worst} differs by {diff(worst)}"
+    )
 
 
 def test_constants(actual):
@@ -234,7 +269,9 @@ def test_segment_ids_map_one_to_one_to_names(actual):
 
 
 def test_segment_name_agreement(actual, expected):
-    agree = sum(actual[cid]["SEGMENT_NAME"] == expected[cid]["SEGMENT_NAME"] for cid in expected) / len(expected)
+    agree = sum(
+        actual[cid]["SEGMENT_NAME"] == expected[cid]["SEGMENT_NAME"] for cid in expected
+    ) / len(expected)
     print(f"\nsegment_name agreement: {agree:.2%} ({len(expected)} customers)")
     assert agree >= SEGMENT_AGREEMENT_MIN
 
@@ -270,15 +307,46 @@ def test_sas_missing_value_semantics(spark):
     rows.append(dict(row, CUSTOMER_ID=100, CUSTOMER_STATUS="I", AGE=40))
     out = {
         r["CUSTOMER_ID"]: r
-        for r in cs.transform(spark.createDataFrame(rows, STG_CUSTOMER_360_SCHEMA), AS_OF_DATE, n_init=2).collect()
+        for r in cs.transform(
+            spark.createDataFrame(rows, STG_CUSTOMER_360_SCHEMA), AS_OF_DATE, n_init=2
+        ).collect()
     }
     assert 100 not in out
     m = out[99]
-    assert (m["TENURE_GROUP"], m["AGE_GROUP"], m["BALANCE_TIER"]) == ("NEW (<1yr)", "GEN_Z", "LOW")
+    assert (m["TENURE_GROUP"], m["AGE_GROUP"], m["BALANCE_TIER"]) == (
+        "NEW (<1yr)",
+        "GEN_Z",
+        "LOW",
+    )
     assert m["PRODUCT_BREADTH_INDEX"] == Decimal("0.00")
     assert m["LIFETIME_VALUE_SCORE"] is None and m["ENGAGEMENT_SCORE"] is None
-    assert (m["CROSS_SELL_FLAG"], m["UPSELL_FLAG"], m["RETENTION_RISK_FLAG"]) == ("N", "N", "N")
+    assert (m["CROSS_SELL_FLAG"], m["UPSELL_FLAG"], m["RETENTION_RISK_FLAG"]) == (
+        "N",
+        "N",
+        "N",
+    )
     assert m["SEGMENT_NAME"] in cs.SEGMENT_LABELS
+
+
+def test_stdize_uses_observed_values_only(spark):
+    """PROC STDIZE: mean/std from non-missing values; missing -> 0 after standardisation."""
+    rows = [(i, 0.0 if i == 1 else (1.0 if i == 2 else None)) for i in (1, 2, 3)]
+    df = spark.createDataFrame(rows, "CUSTOMER_ID long, ACCT_RATIO double")
+    for c in cs.CLUSTER_FEATURES:
+        if c != "ACCT_RATIO":
+            df = df.withColumn(c, F.lit(1.0))
+    z = {
+        r["CUSTOMER_ID"]: r["_features"][cs.CLUSTER_FEATURES.index("ACCT_RATIO")]
+        for r in cs._standardise(df).collect()
+    }
+    assert math.isclose(z[1], -math.sqrt(0.5)) and math.isclose(z[2], math.sqrt(0.5))
+    assert z[3] == 0.0
+
+
+def test_transform_leaves_no_cached_data(spark, stg_customer_360):
+    before = spark.sparkContext._jsc.getPersistentRDDs().size()
+    cs.transform(stg_customer_360, AS_OF_DATE, n_init=2).collect()
+    assert spark.sparkContext._jsc.getPersistentRDDs().size() == before
 
 
 class _FakePipelineUtils(types.ModuleType):
@@ -293,7 +361,12 @@ class _FakePipelineUtils(types.ModuleType):
 
     def get_run_params(self, argv=None):
         self.calls.append(("get_run_params", argv))
-        return types.SimpleNamespace(as_of_date=AS_OF_DATE, env="dev", lookback_months=12, risk_score_threshold=700)
+        return types.SimpleNamespace(
+            as_of_date=AS_OF_DATE,
+            env="dev",
+            lookback_months=12,
+            risk_score_threshold=700,
+        )
 
     def read_table(self, spark, schema, table):
         self.calls.append(("read_table", schema, table))
@@ -331,11 +404,35 @@ def test_main_reads_validates_writes_and_logs(monkeypatch, stg_customer_360, res
     assert cs.main(["--as-of-date", "2026-04-10", "--env", "dev"]) == 0
     assert seen == {"df": stg_customer_360, "as_of_date": AS_OF_DATE}
     names = [c[0] for c in fake.calls]
-    assert names == ["get_run_params", "log_step", "read_table", "validate_table", "write_table", "log_step"]
+    assert names == [
+        "get_run_params",
+        "log_step",
+        "read_table",
+        "validate_table",
+        "write_table",
+        "log_step",
+    ]
     assert ("read_table", "stg", "STG_CUSTOMER_360") in fake.calls
-    assert ("validate_table", ["CUSTOMER_ID"], ["CUSTOMER_ID", "SEGMENT_NAME", "SEGMENT_ID"], 1) in fake.calls
-    assert ("write_table", "dp", "CUSTOMER_SEGMENTS", "overwrite", EXPECTED_ROWS) in fake.calls
-    assert fake.calls[-1] == ("log_step", "01_sas_customer_segments", "01_CUSTOMER_SEG", "SUCCESS", EXPECTED_ROWS)
+    assert (
+        "validate_table",
+        ["CUSTOMER_ID"],
+        ["CUSTOMER_ID", "SEGMENT_NAME", "SEGMENT_ID"],
+        1,
+    ) in fake.calls
+    assert (
+        "write_table",
+        "dp",
+        "CUSTOMER_SEGMENTS",
+        "overwrite",
+        EXPECTED_ROWS,
+    ) in fake.calls
+    assert fake.calls[-1] == (
+        "log_step",
+        "01_sas_customer_segments",
+        "01_CUSTOMER_SEG",
+        "SUCCESS",
+        EXPECTED_ROWS,
+    )
 
 
 def test_main_validation_failure_skips_write(monkeypatch, stg_customer_360, result_df):
