@@ -3,8 +3,9 @@
 The SQL Server shim rewrites Synapse CTAS into SQL Server SELECT INTO while
 preserving the procedure, statistics, and error-handling statements. The local
 container binds to 127.0.0.1:14336 by default; override the host port with
-``AZSYN03_MSSQL_PORT``. It is removed at teardown unless
-``AZSYN_KEEP_MSSQL=1``; remove a kept container with ``docker rm -f azsyn03-mssql``.
+``AZSYN03_MSSQL_PORT``. A container created by the test is removed at teardown
+unless ``AZSYN_KEEP_MSSQL=1``; a reused container is never removed. Remove a
+kept container with ``docker rm -f azsyn03-mssql``.
 """
 
 from __future__ import annotations
@@ -113,6 +114,7 @@ def _prepare_local_container() -> tuple[str, int, str, bool]:
     if host:
         return host, int(os.environ.get("MSSQL_PORT", "1433")), password, False
     port = int(os.environ.get("AZSYN03_MSSQL_PORT", DEFAULT_CONTAINER_PORT))
+    created_container = False
 
     docker_path = shutil.which("docker")
     if docker_path is None:
@@ -163,17 +165,18 @@ def _prepare_local_container() -> tuple[str, int, str, bool]:
         )
         if started.returncode != 0:
             pytest.skip(f"Could not start SQL Server container: {started.stderr.strip()}")
+        created_container = True
 
-    return "127.0.0.1", port, password, True
+    return "127.0.0.1", port, password, created_container
 
 
 @pytest.fixture(scope="session")
 def sqlserver_connection():
-    manages_container = False
+    created_container = False
     connection = None
     database_connection = None
     try:
-        host, port, password, manages_container = _prepare_local_container()
+        host, port, password, created_container = _prepare_local_container()
         deadline = time.monotonic() + 120
         last_error = "SQL Server did not accept a connection"
         while time.monotonic() < deadline:
@@ -292,7 +295,7 @@ def sqlserver_connection():
                 connection.close()
         finally:
             if (
-                manages_container
+                created_container
                 and os.environ.get("AZSYN_KEEP_MSSQL") != "1"
                 and shutil.which("docker") is not None
             ):
