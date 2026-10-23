@@ -5,6 +5,7 @@
 /*              transaction velocity, and external credit bureau data.           */
 /* Source:      CORE_BANKING_DB.CUSTOMERS, ACCOUNTS                             */
 /*              TXN_PROCESSING_DB.TRANSACTIONS, TRANSACTION_TYPES               */
+/*              ETL_STAGING_DB.REF_HIGH_RISK_MERCHANT_CATEGORY (business rule)  */
 /* Target:      ETL_STAGING_DB.STG_RISK_FACTORS                                  */
 /* Schedule:    Daily, 03:00 AM ET  (runs after 02_stg_txn_summary)              */
 /* ============================================================================= */
@@ -14,6 +15,29 @@
 .SET SESSION TRANSACTION BTET;
 
 .LOGON ${TD_SERVER}/${TD_USERNAME},;
+
+/* ========================================================================= */
+/* RULE LOOKUP: High-risk merchant categories in force on the run date       */
+/* Maintained by Compliance in REF_HIGH_RISK_MERCHANT_CATEGORY               */
+/* (ddl/03_reference_tables.sql, ddl/04_reference_seed.sql).                 */
+/* ========================================================================= */
+CREATE VOLATILE TABLE VT_HIGH_RISK_MERCHANT_CATEGORY AS
+(
+    SELECT DISTINCT
+        MERCHANT_CATEGORY
+    FROM ETL_STAGING_DB.REF_HIGH_RISK_MERCHANT_CATEGORY
+    WHERE EFFECTIVE_DATE <= CURRENT_DATE
+      AND (EXPIRATION_DATE IS NULL OR EXPIRATION_DATE > CURRENT_DATE)
+)
+WITH DATA
+ON COMMIT PRESERVE ROWS;
+
+.IF ERRORCODE <> 0 THEN .EXIT ERRORCODE;
+
+/* Guard: an empty rule list would silently zero HIGH_RISK_MERCHANT_CNT */
+SELECT MERCHANT_CATEGORY FROM VT_HIGH_RISK_MERCHANT_CATEGORY;
+
+.IF ACTIVITYCOUNT = 0 THEN .EXIT 99;
 
 /* ========================================================================= */
 /* INTERMEDIATE TABLE 1: Daily balance snapshots for volatility calculation   */
@@ -290,12 +314,12 @@ CREATE MULTISET TABLE ETL_STAGING_DB.STG_RISK_FACTORS AS
             END) AS NEW_MERCH_30D,
             /* International transactions (channel heuristic) */
             SUM(CASE WHEN t.CHANNEL_CODE = 'INTL' THEN 1 ELSE 0 END) AS INTL_TXN_CNT,
-            /* High-risk merchant categories */
-            SUM(CASE WHEN t.MERCHANT_CATEGORY IN (
-                'GAMBLING', 'WIRE_TRANSFER_INTL', 'CRYPTO_EXCHANGE', 'PAWN_SHOP'
-            ) THEN 1 ELSE 0 END) AS HIGH_RISK_CNT
+            /* High-risk merchant categories (rule list from REF table above) */
+            SUM(CASE WHEN hrm.MERCHANT_CATEGORY IS NOT NULL
+                     THEN 1 ELSE 0 END) AS HIGH_RISK_CNT
         FROM TXN_PROCESSING_DB.TRANSACTIONS t
         INNER JOIN CORE_BANKING_DB.ACCOUNTS acct ON t.ACCOUNT_ID = acct.ACCOUNT_ID
+        LEFT JOIN VT_HIGH_RISK_MERCHANT_CATEGORY hrm ON t.MERCHANT_CATEGORY = hrm.MERCHANT_CATEGORY
         WHERE t.TRANSACTION_DATE >= ADD_MONTHS(CURRENT_DATE, -6)
           AND t.STATUS_CODE = 'P'
         GROUP BY acct.CUSTOMER_ID

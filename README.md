@@ -41,7 +41,9 @@ demo/
 ├── ddl/
 │   ├── 00_source_tables.sql               # Source table DDL (documentation)
 │   ├── 01_staging_tables.sql              # BTEQ staging table DDL
-│   └── 02_data_product_tables.sql         # Final data product DDL
+│   ├── 02_data_product_tables.sql         # Final data product DDL
+│   ├── 03_reference_tables.sql            # Business-rule lookup DDL (REF_HIGH_RISK_MERCHANT_CATEGORY)
+│   └── 04_reference_seed.sql              # Seed rows for the reference tables
 ├── bteq/
 │   ├── 01_stg_customer_360.bteq           # Customer denormalization
 │   ├── 02_stg_txn_summary.bteq           # Transaction aggregation
@@ -74,7 +76,31 @@ close to the data. Each script follows a consistent pattern:
 |--------|-------------|--------|----------------|
 | `01_stg_customer_360.bteq` | CUSTOMERS, ACCOUNTS, ADDRESSES | STG_CUSTOMER_360 | LEFT JOINs, QUALIFY ROW_NUMBER, CASE expressions, derived metrics |
 | `02_stg_txn_summary.bteq` | TRANSACTIONS, TRANSACTION_TYPES, ACCOUNTS | STG_TXN_SUMMARY | Aggregations (SUM/AVG/COUNT), channel mix %, volatile table params |
-| `03_stg_risk_factors.bteq` | TRANSACTIONS, ACCOUNTS, CUSTOMERS | STG_RISK_FACTORS | Work tables, STDDEV_POP, velocity calcs, multi-pass joins, cleanup |
+| `03_stg_risk_factors.bteq` | TRANSACTIONS, ACCOUNTS, CUSTOMERS, REF_HIGH_RISK_MERCHANT_CATEGORY | STG_RISK_FACTORS | Work tables, STDDEV_POP, velocity calcs, multi-pass joins, cleanup |
+
+#### Business rule: high-risk merchant categories
+
+`STG_RISK_FACTORS.HIGH_RISK_MERCHANT_CNT` counts each customer's posted transactions in the last 6 months
+whose `MERCHANT_CATEGORY` is on Compliance's high-risk list. The list is **data, not code**: it lives in
+`ETL_STAGING_DB.REF_HIGH_RISK_MERCHANT_CATEGORY` (`ddl/03_reference_tables.sql`, seeded by
+`ddl/04_reference_seed.sql`), one row per category with `EFFECTIVE_DATE` / `EXPIRATION_DATE`.
+`03_stg_risk_factors.bteq` loads the categories in force on the run date (`EFFECTIVE_DATE <= CURRENT_DATE`
+and `EXPIRATION_DATE` null or in the future) into a volatile table and joins transactions to it; the whole
+6-month window is scored against the list in force on the run date. The script aborts (exit 99) if the list is empty.
+
+Current list: GAMBLING, WIRE_TRANSFER_INTL, CRYPTO_EXCHANGE, PAWN_SHOP (since 2020-01-01) and
+PAYDAY_LENDER (effective 2026-11-01).
+
+To change the list, INSERT a row with its `EFFECTIVE_DATE` (or UPDATE `EXPIRATION_DATE` to retire one) —
+no code release is needed. Then rerun, in order:
+
+1. `bteq/03_stg_risk_factors.bteq` → rebuilds STG_RISK_FACTORS
+2. `sas/03_sas_risk_scoring.sas` → rebuilds CUSTOMER_RISK_SCORES
+3. `sas/04_sas_data_products.sas` → rebuilds CUSTOMER_MASTER_PROFILE (run on the same day as step 2)
+
+`01_stg_customer_360`, `02_stg_txn_summary`, `01_sas_customer_segments` and `02_sas_txn_analytics` do not
+read the list and need not rerun. If the row is dated in the future, no rerun is needed at all — the nightly
+run picks it up on its effective date.
 
 BTEQ conventions used:
 - `.SET ERRORLEVEL 3807 SEVERITY 0` - suppress "table does not exist" on DROP
@@ -130,6 +156,10 @@ Four certified data product tables in `DATA_PRODUCTS_DB`:
 # Dry run (print steps without executing)
 ./orchestration/run_full_pipeline.sh --dry-run
 ```
+
+The orchestrators have no per-step option; to rerun a subset (e.g. after a change to
+`REF_HIGH_RISK_MERCHANT_CATEGORY`, see above) invoke the individual `bteq` / `sas` scripts directly,
+or let the nightly full run recompute everything.
 
 ## Prerequisites
 
