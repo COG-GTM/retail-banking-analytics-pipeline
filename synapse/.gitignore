@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+.env
+*.local.json
+spark-warehouse/
+metastore_db/
+derby.log
+infra/**/*.json.tmp
+pipelines/.build/
