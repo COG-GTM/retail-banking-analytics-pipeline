@@ -75,7 +75,12 @@ class ValidationError(Exception): result
 
 | Job | Object validated | `key_cols` | `not_null` |
 |---|---|---|---|
-| T3 load | each source table | — | — |
+| T3 load | `CORE_BANKING_DB.CUSTOMERS` | `CUSTOMER_ID` | `CUSTOMER_ID` |
+| T3 load | `CORE_BANKING_DB.ACCOUNTS` | `ACCOUNT_ID` | `ACCOUNT_ID,CUSTOMER_ID` |
+| T3 load | `CORE_BANKING_DB.ADDRESSES` | `ADDRESS_ID` | `ADDRESS_ID,CUSTOMER_ID` |
+| T3 load | `CORE_BANKING_DB.CUSTOMER_BUREAU_SCORES` | `CUSTOMER_ID,REPORT_DATE` (several reports per customer are allowed; T6 picks the latest) | `CUSTOMER_ID` |
+| T3 load | `TXN_PROCESSING_DB.TRANSACTIONS` | `TRANSACTION_ID` | `TRANSACTION_ID,ACCOUNT_ID` |
+| T3 load | `TXN_PROCESSING_DB.TRANSACTION_TYPES` | `TRANSACTION_TYPE_CD` | `TRANSACTION_TYPE_CD` |
 | T4 | `ETL_STAGING_DB.STG_CUSTOMER_360` | `CUSTOMER_ID` | `CUSTOMER_ID` |
 | T5 | `ETL_STAGING_DB.STG_TXN_SUMMARY` | `CUSTOMER_ID,ACCOUNT_ID` | `CUSTOMER_ID,ACCOUNT_ID` |
 | T6 | `ETL_STAGING_DB.STG_RISK_FACTORS` | `CUSTOMER_ID` | `CUSTOMER_ID` |
@@ -84,4 +89,9 @@ class ValidationError(Exception): result
 | T8 risk | risk final DF | `CUSTOMER_ID` | `CUSTOMER_ID COMPOSITE_RISK_SCORE RISK_TIER` |
 | T9 | master profile final DF | `CUSTOMER_ID` | `CUSTOMER_ID FULL_NAME CUSTOMER_STATUS` |
 
-(Key checks for T4–T6 are additions — BTEQ had none — and are cheap safety nets; they must pass on the reference data.)
+Source-key checks (T3) are mandatory: C1 declares no PK/UNIQUE constraints, and a duplicate
+join key (e.g. two `TRANSACTION_TYPES` rows for `PUR`) would multiply rows in the T5/T6 joins while
+the staging tables' own customer/account key checks still pass. A duplicate source key therefore
+fails the load (`50101`) before any staging proc runs.
+
+(Key checks for T3–T6 are additions — BTEQ had none; they must pass on the reference data.)
