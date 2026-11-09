@@ -1,0 +1,7 @@
+# Local test dependencies (frozen by the prep PR; see requirements.txt header).
+-r requirements.txt
+pytest>=7.4
+pymssql>=2.2.8
+pandas>=2.0
+numpy>=1.24
+scipy>=1.10
