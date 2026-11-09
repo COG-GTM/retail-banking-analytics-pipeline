@@ -7,7 +7,7 @@
 | **Owned paths** | `synapse/sql/staging/usp_stg_txn_summary.sql`, `synapse/tests/ticket_05/**` |
 | **Contracts OWNED** | none (implements `ETL_STAGING_DB.usp_stg_txn_summary` from C7 §2) |
 | **Contracts CONSUMED** | C1 (`TRANSACTIONS`, `TRANSACTION_TYPES`, `ACCOUNTS` → `STG_TXN_SUMMARY`), C2, C3, C5 §4, C7 |
-| **Depends on** | **T2 + T9 contract freeze** (Wave 2). Runtime: T2 DDL, T9 helper procs, T3 data |
+| **Depends on** | nothing to start — contracts frozen at prep merge; launches with all 10 tickets. Runtime: T2 DDL, T9 helper procs, T3 data |
 | **Blocks (runtime only)** | T8 (`txn_analytics`) reads `STG_TXN_SUMMARY` |
 
 ## Objective

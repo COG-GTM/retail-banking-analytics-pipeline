@@ -9,15 +9,14 @@ brief, the repo, and the frozen contracts in `synapse/common/contracts/`.
 
 ## 1. Dependency graph
 
-Two kinds of dependency are tracked separately:
-
-- **Contract dependency** (needed to *write code*): satisfied by the contracts frozen in this prep PR, confirmed by T2 (C1) and T9 (C2–C5).
-- **Runtime dependency** (needed for *live integration / end-to-end runs*): another ticket's implementation must be merged.
+All ten tickets code against the contracts frozen by this prep PR, so **no ticket waits on another
+to start**. The only dependencies left are runtime ones (needed for live integration, end-to-end
+runs and merge order).
 
 ```mermaid
 graph TD
     PREP["Prep PR merged<br/>contracts C1-C7 FROZEN v1.0"]
-    T1["T1 Infra IaC"]
+    T1["T1 Infra IaC — owns C6"]
     T2["T2 DDL — owns C1"]
     T9["T9 common lib — owns C2-C5<br/>+ data_products.py"]
     T3["T3 Ingestion"]
@@ -27,12 +26,8 @@ graph TD
     T7["T7 customer_segments"]
     T8["T8 txn_analytics + risk_scoring"]
     T10["T10 Pipelines + trigger — owns C7"]
-    GATE{{"Contract freeze gate G1<br/>T2 confirms C1, T9 confirms C2-C5"}}
 
-    PREP --> T1 & T2 & T9
-    T2 --> GATE
-    T9 --> GATE
-    GATE --> T3 & T4 & T5 & T6 & T7 & T8 & T10
+    PREP --> T1 & T2 & T3 & T4 & T5 & T6 & T7 & T8 & T9 & T10
 
     T2 -. runtime .-> T3 & T4 & T5 & T6
     T9 -. runtime .-> T3 & T4 & T5 & T6 & T7 & T8 & T10
@@ -46,37 +41,41 @@ graph TD
     T3 & T4 & T5 & T6 & T7 & T8 & T9 -. entry points .-> T10
 ```
 
-Solid arrows = must happen before the ticket starts coding. Dotted = needed only for live
-integration tests and merge ordering; every ticket can be fully unit-tested locally against the
-reference CSVs in `data/` before its runtime dependencies merge.
+Solid arrows = must happen before the ticket starts coding (only the prep merge). Dotted = needed
+only for live integration tests and merge ordering; every ticket can be fully unit-tested locally
+against the reference CSVs in `data/` before its runtime dependencies merge, using stand-ins for
+other tickets' objects that live only in its own `synapse/tests/ticket_NN/` folder.
 
-| Ticket | Contract deps (block start) | Runtime deps (block live integration / e2e) |
+| Ticket | Blocks start | Runtime deps (block live integration / e2e) |
 |---|---|---|
-| T1 Infra | — | — |
-| T2 DDL | — | T1 (only to deploy) |
-| T9 Common + golden record | — | T2 (`ETL_RUN_LOG`, DP tables); T4, T7, T8 data for `data_products.py` e2e |
-| T3 Ingestion | G1 (C1, C2, C3, C4) | T1 storage, T2 tables, T9 helper procs |
-| T4 stg_customer_360 | G1 (C1, C2, C3) | T2, T9 helper procs, T3 data |
-| T5 stg_txn_summary | G1 (C1, C2, C3) | T2, T9 helper procs, T3 data |
-| T6 stg_risk_factors | G1 (C1, C2, C3) | T2, T9 helper procs, T3 data |
-| T7 customer_segments | G1 (C1–C5) | T9 library, T4 data |
-| T8 txn + risk | G1 (C1–C5) | T9 library, T4/T5/T6 data |
-| T10 Orchestration | G1 (C2, C4) + C6/C7 | everything (e2e), T1 workspace |
+| T1 Infra | prep merge | — |
+| T2 DDL | prep merge | T1 (only to deploy) |
+| T9 Common + golden record | prep merge | T2 (`ETL_RUN_LOG`, DP tables); T4, T7, T8 data for `data_products.py` e2e |
+| T3 Ingestion | prep merge | T1 storage, T2 tables, T9 helper procs |
+| T4 stg_customer_360 | prep merge | T2, T9 helper procs, T3 data |
+| T5 stg_txn_summary | prep merge | T2, T9 helper procs, T3 data |
+| T6 stg_risk_factors | prep merge | T2, T9 helper procs, T3 data |
+| T7 customer_segments | prep merge | T9 library, T4 data |
+| T8 txn + risk | prep merge | T9 library, T4/T5/T6 data |
+| T10 Orchestration | prep merge | everything (e2e), T1 workspace |
 
-## 2. Dispatch waves
+## 2. Dispatch: one wave, all 10 tickets at once
 
-| Wave | Tickets | When | Fully parallel within wave? |
-|---|---|---|---|
-| **Wave 1** | **T1, T2, T9** | immediately after the prep PR merges | **Yes** — disjoint directories, no mutual contract dependency (T2 creates `ETL_RUN_LOG` per C2, which is already frozen) |
-| **Wave 2** | **T3, T4, T5, T6, T7, T8, T10** | after **gate G1**: T2 has posted "C1 v1.0 confirmed" (or merged a C1 amendment) **and** T9 has posted "C2–C5 v1.0 confirmed" (or merged amendments). Expected within the first hour of Wave 1 | **Yes** — disjoint files, all code against frozen contracts |
+All ten sessions start together as soon as this prep PR merges to `main`. Launch prompts are in
+[`prompts/`](prompts/README.md), one per ticket.
 
-**Fast path:** if the reviewer of this prep PR is satisfied that C1–C5 need no amendment, G1 can be
-declared at merge time and all 10 tickets dispatched at once. The waves only exist to protect
-Wave 2 from a late contract change by T2/T9.
+Because consumers are coding against C1–C7 at the same moment their owners are, contracts are
+**frozen for the whole wave**:
 
-**Why T2 and T9 first:** C1 (schema) is consumed by every other ticket; C2–C5 (audit, validation,
-connectivity, write-back) are consumed by every staging proc and Spark job. Freezing them first is
-what makes the remaining seven tickets independent of each other.
+- **Owners** (T2 → C1, T9 → C2–C5, T1 → C6, T10 → C7) re-read their contracts against the
+  Teradata/SAS sources first. They may commit **additive, non-breaking** amendments only
+  (clarifications, new optional parameters with defaults, new columns appended at the end of a
+  table that no consumer reads yet), in the first commit of their PR, called out at the top of the
+  PR description. Renaming, retyping, reordering or removing anything a consumer relies on is a
+  **breaking change**: code to v1.0 and raise it as a "Contract change request" for the
+  integrator instead.
+- **Consumers** never edit contracts; they code to v1.0 exactly and raise any problem as a
+  "Contract change request" in their PR description.
 
 ## 3. Recommended merge order
 
@@ -106,7 +105,7 @@ this repo (older fan-outs used `devin/*`), so branch names cannot collide with s
 
 Contract owned by T1 (`06_environment_and_naming_contract.md`) may also be amended by T1 only.
 
-### Shared files nobody edits during the waves (integrator only)
+### Shared files nobody edits during the wave (integrator only)
 
 `synapse/README.md` (incl. the ticket status table), `synapse/tickets/**`,
 `synapse/common/contracts/README.md`, `synapse/common/contracts/stubs/**`,
@@ -133,7 +132,6 @@ they stay integrator-only. Anything outside `synapse/` is read-only for every ti
 ## 5. Dispatch checklist (for whoever dispatches later — not done by the prep task)
 
 - [ ] Prep PR reviewed and merged to `main`.
-- [ ] Wave 1: start one session each for T1, T2, T9 with the prompt "Execute `synapse/tickets/TICKET-NN.md` in `COG-GTM/retail-banking-analytics-pipeline`."
-- [ ] Gate G1: T2 and T9 PR descriptions say contracts confirmed (or amendments merged and announced).
-- [ ] Wave 2: start T3, T4, T5, T6, T7, T8, T10 the same way.
+- [ ] Start all 10 sessions at once, one per ticket, each with its prompt from [`prompts/TICKET-NN.md`](prompts/README.md).
+- [ ] As PRs open: check each PR description for contract amendments (T1, T2, T9, T10) and "Contract change request" sections (everyone); the integrator decides and announces any v1.1.
 - [ ] Integrator updates the status column in `synapse/README.md` as PRs merge, then performs the end-to-end check in §3.5.

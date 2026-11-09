@@ -7,7 +7,7 @@
 | **Owned paths** | `synapse/infra/**`, `synapse/tests/ticket_01/**` |
 | **Contracts OWNED** | C6 [environment & naming](../common/contracts/06_environment_and_naming_contract.md) |
 | **Contracts CONSUMED** | C4 §2 [Key Vault secret names](../common/contracts/04_connectivity_and_secrets_contract.md) (T1 *writes* these secrets), C1 §2 (database collation requirement) |
-| **Depends on** | nothing — Wave 1, can start immediately |
+| **Depends on** | nothing — launches with all 10 tickets at prep merge |
 | **Blocks (runtime only)** | live deployment of T3, T10; nobody is blocked for coding |
 
 ## Objective

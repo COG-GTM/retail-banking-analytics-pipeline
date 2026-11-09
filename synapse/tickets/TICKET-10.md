@@ -7,7 +7,7 @@
 | **Owned paths** | `synapse/pipelines/**`, `synapse/tests/ticket_10/**`, and (as contract owner) `synapse/common/contracts/07_entry_points_contract.md` |
 | **Contracts OWNED** | C7 [entry points & runtime parameters](../common/contracts/07_entry_points_contract.md) |
 | **Contracts CONSUMED** | C1 (post-run row counts), C2 (pipeline-level audit rows), C4 §6 (linked services), C6 (workspace, pools, containers, artifacts path) |
-| **Depends on** | **T2 + T9 contract freeze** (Wave 2). Codes entirely against C7; end-to-end run needs all other tickets merged + a deployed workspace (T1) |
+| **Depends on** | nothing to start — contracts frozen at prep merge; launches with all 10 tickets. Codes entirely against C7; end-to-end run needs all other tickets merged + a deployed workspace (T1) |
 | **Blocks** | nothing |
 
 ## Objective

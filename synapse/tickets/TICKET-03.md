@@ -7,7 +7,7 @@
 | **Owned paths** | `synapse/ingestion/**`, `synapse/tests/ticket_03/**` |
 | **Contracts OWNED** | none (implements entry point `usp_load_source_tables` from C7 §2) |
 | **Contracts CONSUMED** | C1 (source tables §3.1–3.6), C2 (`usp_log_step`), C3 (`usp_validate_table`), C4 §2/§5 (Key Vault names, landing paths, MI auth), C6 (containers), C7 (signature) |
-| **Depends on** | **T2 + T9 contract freeze** (Wave 2). Runtime: T2 DDL (tables to load), T9 helper procs, T1 storage |
+| **Depends on** | nothing to start — contracts frozen at prep merge; launches with all 10 tickets. Runtime: T2 DDL (tables to load), T9 helper procs, T1 storage |
 | **Blocks (runtime only)** | T4–T6 need loaded source tables for end-to-end runs |
 
 ## Objective

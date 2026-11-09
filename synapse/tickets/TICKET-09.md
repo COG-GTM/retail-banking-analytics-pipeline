@@ -7,7 +7,7 @@
 | **Owned paths** | `synapse/common/**` except `synapse/common/__init__.py` (prep-created, keep empty) and contract files it does not own; `synapse/spark/data_products.py`; `synapse/tests/ticket_09/**` |
 | **Contracts OWNED** | **C2 [audit logging](../common/contracts/02_audit_logging_contract.md)**, **C3 [validation](../common/contracts/03_validation_contract.md)**, **C4 [connectivity & secrets](../common/contracts/04_connectivity_and_secrets_contract.md)**, **C5 [write-back](../common/contracts/05_write_back_contract.md)** — prerequisite contracts |
 | **Contracts CONSUMED** | C1 (all tables; `common.schema` must mirror it), C6 (resource / Key Vault names), C7 (CLI + runtime defaults for `common.config`; job contract for `data_products.py`) |
-| **Depends on** | nothing for the shared library — Wave 1, start immediately. `data_products.py` runtime depends on T4, T7, T8 outputs (codes against C1 meanwhile) |
+| **Depends on** | nothing to start — launches with all 10 tickets at prep merge. `data_products.py` runtime depends on T4, T7, T8 outputs (codes against C1 meanwhile) |
 | **Blocks** | live integration/merge of T3–T8 and T10 (they code against C2–C5 meanwhile) |
 
 ## Objective
@@ -18,10 +18,12 @@
 2. Port `sas/04_sas_data_products.sas` (golden-record assembly, `MODEL_VERSION = 'MASTER_V1.5'`)
    to `synapse/spark/data_products.py`.
 
-**First step (contract freeze):** re-read C2–C5 against `sas/macros/*.sas` and the BTEQ audit
-pattern. If you find a defect, fix the contract file(s) you own (and note the stub change needed)
-in the **first commit** of your PR and call it out at the top of the PR description. Otherwise
-state "C2–C5 v1.0 confirmed". Ship the library first (land it as early as possible — every Wave 2
+**First step (contract check):** re-read C2–C5 against `sas/macros/*.sas` and the BTEQ audit
+pattern. All other tickets are coding against C2–C5 v1.0 in parallel with you, so you may only make
+**additive, non-breaking** amendments to the contract file(s) you own (first commit of your PR,
+called out at the top of the PR description, noting the stub change needed). Anything that renames
+or changes an existing signature, column or behaviour goes in a "Contract change request" section
+instead (see `PARALLELIZATION.md` §2). Otherwise state "C2–C5 v1.0 confirmed". Ship the library first (land it as early as possible — every other
 ticket integrates against it).
 
 ## Source files (read-only references)

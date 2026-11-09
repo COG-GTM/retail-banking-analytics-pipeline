@@ -33,6 +33,6 @@ orchestration entry points are also fixed up front.
 
 ## Freeze and change process
 
-1. Contracts are authored and frozen by the prep PR. **T2 and T9 own the prerequisite contracts (C1–C5)**; their sessions start by re-reading them against the Teradata/SAS sources and, if a defect is found, amend the contract **in the first commit of their own PR** and flag it in the PR description. Consumers must not start live integration until the T2/T9 freeze is confirmed (see [`../../tickets/PARALLELIZATION.md`](../../tickets/PARALLELIZATION.md)).
-2. After that, contracts are immutable for the wave. A ticket that needs a change must **not** edit a contract it does not own and must not work around it silently: it codes to the frozen contract and writes a "Contract change request" section in its PR description.
+1. Contracts are authored and frozen (v1.0) by the prep PR. All 10 tickets start at the same time and code against v1.0.
+2. Owners (T2 → C1, T9 → C2–C5, T1 → C6, T10 → C7) re-check their contracts first and may make **additive, non-breaking** amendments only, in the first commit of their PR, flagged at the top of the PR description. Breaking changes (rename, retype, reorder, remove) are never committed during the wave: like any other ticket, the owner codes to v1.0 and writes a "Contract change request" section in its PR description for the integrator (see [`../../tickets/PARALLELIZATION.md`](../../tickets/PARALLELIZATION.md) §2).
 3. Only the owning ticket edits its contract file. Nobody edits `stubs/` except the integrator (stubs mirror the contracts).

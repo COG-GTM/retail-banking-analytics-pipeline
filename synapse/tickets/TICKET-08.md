@@ -7,7 +7,7 @@
 | **Owned paths** | `synapse/spark/txn_analytics.py`, `synapse/spark/risk_scoring.py`, `synapse/tests/ticket_08/**` |
 | **Contracts OWNED** | none (implements Spark jobs `txn_analytics.py`, `risk_scoring.py` from C7 §3) |
 | **Contracts CONSUMED** | C1 (`STG_TXN_SUMMARY`, `STG_RISK_FACTORS`, `STG_CUSTOMER_360` → `TRANSACTION_ANALYTICS`, `CUSTOMER_RISK_SCORES`), C2, C3, C4, C5 (incl. the period-scoped delete for `TRANSACTION_ANALYTICS`), C7 |
-| **Depends on** | **T2 + T9 contract freeze** (Wave 2). Runtime: T9 `synapse/common/`, T4/T5/T6 data |
+| **Depends on** | nothing to start — contracts frozen at prep merge; launches with all 10 tickets. Runtime: T9 `synapse/common/`, T4/T5/T6 data |
 | **Blocks (runtime only)** | T9 `data_products.py` reads both outputs |
 
 ## Objective

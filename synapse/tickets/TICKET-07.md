@@ -7,7 +7,7 @@
 | **Owned paths** | `synapse/spark/customer_segments.py`, `synapse/tests/ticket_07/**` |
 | **Contracts OWNED** | none (implements Spark job `customer_segments.py` from C7 §3) |
 | **Contracts CONSUMED** | C1 (`STG_CUSTOMER_360` → `CUSTOMER_SEGMENTS`), C2 (`common.audit`), C3 (`common.validation`), C4 (`common.config`, `common.sql_connector`), C5 (`common.writeback`), C7 (CLI / `run` / `main`) |
-| **Depends on** | **T2 + T9 contract freeze** (Wave 2). Runtime: T9 `synapse/common/` implementation, T4 data |
+| **Depends on** | nothing to start — contracts frozen at prep merge; launches with all 10 tickets. Runtime: T9 `synapse/common/` implementation, T4 data |
 | **Blocks (runtime only)** | T9 `data_products.py` reads `CUSTOMER_SEGMENTS` |
 
 ## Objective

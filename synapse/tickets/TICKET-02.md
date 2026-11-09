@@ -7,7 +7,7 @@
 | **Owned paths** | `synapse/sql/ddl/**`, `synapse/tests/ticket_02/**`, and (as contract owner) `synapse/common/contracts/01_schema_contract.md` |
 | **Contracts OWNED** | **C1 [schema](../common/contracts/01_schema_contract.md)** — prerequisite contract |
 | **Contracts CONSUMED** | C2 §2 (`ETL_RUN_LOG` column shape, owned by T9 — you create the table), C6 (collation) |
-| **Depends on** | nothing — Wave 1, can start immediately |
+| **Depends on** | nothing — launches with all 10 tickets at prep merge |
 | **Blocks** | live integration/merge of T3–T10 (they code against C1 meanwhile) |
 
 ## Objective
@@ -17,9 +17,12 @@ SQL pool**, converting `MULTISET` / `PRIMARY INDEX` / `COLLECT STATISTICS` into 
 + `CLUSTERED COLUMNSTORE INDEX` + `CREATE STATISTICS`, and add the two tables the pipeline uses
 but never defines.
 
-**First step (contract freeze):** re-read C1 against the Teradata DDL below. If you find a
-defect, fix `01_schema_contract.md` in the **first commit** of your PR and call it out at the top
-of the PR description so the integrator can notify consumers. Otherwise state "C1 v1.0 confirmed".
+**First step (contract check):** re-read C1 against the Teradata DDL below. All other tickets are
+coding against C1 v1.0 in parallel with you, so you may only make **additive, non-breaking**
+amendments to `01_schema_contract.md` (first commit of your PR, called out at the top of the PR
+description). Anything that renames, retypes, reorders or removes a column/table goes in a
+"Contract change request" section instead (see `PARALLELIZATION.md` §2). Otherwise state
+"C1 v1.0 confirmed".
 
 ## Source files (read-only references)
 

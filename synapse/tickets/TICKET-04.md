@@ -7,7 +7,7 @@
 | **Owned paths** | `synapse/sql/staging/usp_stg_customer_360.sql`, `synapse/tests/ticket_04/**` |
 | **Contracts OWNED** | none (implements `ETL_STAGING_DB.usp_stg_customer_360` from C7 §2) |
 | **Contracts CONSUMED** | C1 (`CUSTOMERS`, `ACCOUNTS`, `ADDRESSES` → `STG_CUSTOMER_360`), C2 (`usp_log_step`), C3 (`usp_validate_table`), C5 §4 (staging load pattern), C7 |
-| **Depends on** | **T2 + T9 contract freeze** (Wave 2). Runtime: T2 DDL, T9 helper procs, T3 data |
+| **Depends on** | nothing to start — contracts frozen at prep merge; launches with all 10 tickets. Runtime: T2 DDL, T9 helper procs, T3 data |
 | **Blocks (runtime only)** | T7, T8 (`risk_scoring`), T9 (`data_products`) read `STG_CUSTOMER_360` |
 
 ## Objective
