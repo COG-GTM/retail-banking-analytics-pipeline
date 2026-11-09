@@ -8,3 +8,5 @@ pyodbc>=5.0
 azure-identity>=1.15
 azure-keyvault-secrets>=4.7
 azure-storage-file-datalake>=12.14
+# T8 stepwise logistic selection (likelihood-ratio p-values via scipy.stats.chi2).
+scipy>=1.10
